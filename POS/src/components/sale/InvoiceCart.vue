@@ -860,6 +860,49 @@
 						}}</span>
 					</button>
 
+					<button
+						v-if="allowCashMovement"
+						type="button"
+						@click="$emit('show-cash-deposit')"
+						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 active:bg-green-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						:title="__('Cash deposit')"
+					>
+						<div
+							class="w-9 h-9 sm:w-10 sm:h-10 bg-green-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-green-100 transition-colors"
+						>
+							<svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+								/>
+							</svg>
+						</div>
+						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{ __("Cash deposit") }}</span>
+					</button>
+					<button
+						v-if="allowCashMovement"
+						type="button"
+						@click="$emit('show-cash-collection')"
+						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 active:bg-red-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						:title="__('Cash collection')"
+					>
+						<div
+							class="w-9 h-9 sm:w-10 sm:h-10 bg-red-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-red-100 transition-colors"
+						>
+							<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+								/>
+							</svg>
+						</div>
+						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{ __("Cash collection") }}</span>
+					</button>
+
 					<!-- POS Expense -->
 					<button
 						v-if="allowPosExpense"
@@ -1382,7 +1425,10 @@
 						formatQuantity(totalQuantity)
 					}}</span>
 				</div>
-				<div class="flex items-center justify-between text-xs text-gray-600">
+				<div
+					v-if="!settingsStore.displayGrossAmounts"
+					class="flex items-center justify-between text-xs text-gray-600"
+				>
 					<span class="font-medium">{{ __("Subtotal") }}</span>
 					<span class="font-bold text-gray-900 text-center min-w-[60px]">{{
 						formatCurrency(displaySubtotal)
@@ -1615,6 +1661,10 @@ const props = defineProps({
 		type: Boolean,
 		default: false,
 	},
+	allowCashMovement: {
+		type: Boolean,
+		default: false,
+	},
 });
 
 /**
@@ -1643,6 +1693,8 @@ const emit = defineEmits([
 	"show-history", // () - Show invoice history
 	"show-return", // () - Open return invoice dialog
 	"show-expense", // () - Open POS expense dialog
+	"show-cash-deposit",
+	"show-cash-collection",
 	"close-shift", // () - Close current shift
 	"show-shift-history", // () - Open shift history dialog
 	// "create-sales-order", // () - Create Sales Order // Removed as per instruction
@@ -2204,10 +2256,14 @@ function resolvePaidQuantityFromDisplay(item, displayQty) {
  */
 function getLineAmount(item) {
 	const amount = item?.amount;
-	if (amount !== null && amount !== undefined && amount !== "") {
-		return Number.parseFloat(amount) || 0;
+	const net =
+		amount !== null && amount !== undefined && amount !== ""
+			? Number.parseFloat(amount) || 0
+			: (Number.parseFloat(item?.rate) || 0) * (Number.parseFloat(item?.quantity) || 0);
+	if (!settingsStore.displayGrossAmounts) {
+		return net;
 	}
-	return (Number.parseFloat(item?.rate) || 0) * (Number.parseFloat(item?.quantity) || 0);
+	return net + (Number.parseFloat(item?.tax_amount) || 0);
 }
 
 /** Effective unit price after line discount (0 for a fully free line). */

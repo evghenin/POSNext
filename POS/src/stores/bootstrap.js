@@ -121,7 +121,7 @@ export const useBootstrapStore = defineStore("bootstrap", () => {
 	/**
 	 * Get preloaded precision settings or defaults if not available
 	 * Settings from Date and Number Format section in System Settings
-	 * @returns {{ currency: number, float: number, rounding_method: string, number_format: string }}
+	 * @returns {{ currency: number, float: number, rounding_method: string, number_format: string, hide_currency_symbol: boolean, currencies: object }}
 	 */
 	function getPreloadedPrecision() {
 		return (

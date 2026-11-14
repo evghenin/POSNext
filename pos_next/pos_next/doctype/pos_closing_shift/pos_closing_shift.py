@@ -649,6 +649,17 @@ def make_closing_shift_from_opening(opening_shift):
 		)
 		_aggregate_payment(payments, expense.mode_of_payment, -expense_amount)
 
+	deposits_total = 0
+	collections_total = 0
+	try:
+		from erpnext_moldova_pos.services.pos_service_receipt_service import apply_to_expected_cash
+
+		deposits_total, collections_total = apply_to_expected_cash(
+			opening_shift.get("name"), payments, cash_mode
+		)
+	except ImportError:
+		pass
+
 	for pay in payments:
 		pay.expense_amount = expense_by_mode.get(pay.mode_of_payment, 0)
 
@@ -687,6 +698,8 @@ def make_closing_shift_from_opening(opening_shift):
 			"sales_count": summary["sales_count"],
 			"expenses_total": expenses_total,
 			"expenses_count": len(pos_expenses_table),
+			"deposits_total": deposits_total,
+			"collections_total": collections_total,
 			"pos_expenses": pos_expenses_table,
 			"pos_transactions": pos_transactions,  # Include return info for display
 		}

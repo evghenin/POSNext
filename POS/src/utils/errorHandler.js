@@ -190,6 +190,7 @@ export function parseError(error) {
 	else if (
 		normalizedMessage.includes("network") ||
 		normalizedMessage.includes("timeout") ||
+		normalizedMessage.includes("timed out") ||
 		normalizedMessage.includes("connection") ||
 		normalizedMessage.includes("fetch")
 	) {

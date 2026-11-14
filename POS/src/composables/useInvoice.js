@@ -13,8 +13,10 @@ const log = logger.create("Invoice");
 
 // Shared mutex for invoice submission across all useInvoice instances
 // This prevents duplicate invoice creation from rapid clicks or concurrent submissions
+// Longer than the fiscal station short wait (300s) so a link failure
+// comes back as a response instead of a client-side mutex timeout.
 const submitMutex = new CoalescingMutex({
-	timeout: 60000,
+	timeout: 360000,
 	name: "InvoiceSubmit",
 });
 
@@ -302,6 +304,8 @@ export function useInvoice() {
 				// Optional item-level Sales Person (commission attribution)
 				sales_person: item.sales_person || null,
 				sales_person_name: item.sales_person_name || null,
+				tax_rate_percent:
+					item.tax_rate_percent != null ? Number(item.tax_rate_percent) : null,
 			};
 			invoiceItems.value.push(newItem);
 			// Recalculate the newly added item to apply taxes
@@ -682,7 +686,10 @@ export function useInvoice() {
 
 		// Calculate tax based on inclusive/exclusive mode
 		// Use currency precision for all monetary calculations to match ERPNext
-		const totalTaxRate = calculateTotalTaxRate();
+		const totalTaxRate =
+			item.tax_rate_percent != null
+				? Number(item.tax_rate_percent)
+				: calculateTotalTaxRate();
 		let netAmount = 0;
 		let taxAmount = 0;
 
@@ -1279,8 +1286,12 @@ export function useInvoice() {
 			const result = await getTaxesResource.submit({ pos_profile: profileName });
 			taxRules.value = result?.data || result || [];
 
-			// Load tax inclusive setting from POS Settings if provided
-			if (posSettings && posSettings.tax_inclusive !== undefined) {
+			const includedInRate = (taxRules.value || []).some(
+				(taxRule) => taxRule.included_in_print_rate,
+			);
+			if (includedInRate) {
+				taxInclusive.value = true;
+			} else if (posSettings && posSettings.tax_inclusive !== undefined) {
 				taxInclusive.value = posSettings.tax_inclusive || false;
 			}
 

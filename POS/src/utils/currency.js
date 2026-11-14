@@ -16,6 +16,8 @@ let settings = {
 	float: 3,
 	rounding_method: "Banker's Rounding",
 	number_format: "#,###.##",
+	hide_currency_symbol: false,
+	currencies: {},
 };
 
 /** Initialize settings from bootstrap data */
@@ -26,8 +28,9 @@ export function initPrecision(data) {
 		float: data.float ?? 3,
 		rounding_method: data.rounding_method || "Banker's Rounding",
 		number_format: data.number_format || "#,###.##",
+		hide_currency_symbol: Boolean(data.hide_currency_symbol),
+		currencies: data.currencies || {},
 	};
-	_formatterCache.clear();
 }
 
 /** Get current settings */
@@ -42,6 +45,7 @@ export function getPrecision() {
 export const DEFAULT_CURRENCY = "USD";
 export const DEFAULT_LOCALE = "en-US";
 
+// Fallback symbols used only before Currency docs are loaded from bootstrap.
 const SYMBOLS = {
 	USD: "$",
 	EUR: "€",
@@ -52,28 +56,21 @@ const SYMBOLS = {
 	EGP: "E£",
 	SAR: "\u00EA",
 	AED: "د.إ",
+	MDL: "MDL",
 };
 
-const _symbolCache = new Map();
+function getCurrencyMeta(currency) {
+	const code = currency || DEFAULT_CURRENCY;
+	const fromErp = settings.currencies?.[code];
+	if (fromErp) return fromErp;
+	return {
+		symbol: SYMBOLS[code] || code,
+		symbol_on_right: false,
+	};
+}
 
 function getSymbol(currency) {
-	if (!currency) return SYMBOLS[DEFAULT_CURRENCY];
-	if (SYMBOLS[currency]) return SYMBOLS[currency];
-	if (_symbolCache.has(currency)) return _symbolCache.get(currency);
-
-	try {
-		const parts = new Intl.NumberFormat(DEFAULT_LOCALE, {
-			style: "currency",
-			currency,
-			currencyDisplay: "narrowSymbol",
-		}).formatToParts(0);
-		const symbol = parts.find((p) => p.type === "currency")?.value || currency;
-		_symbolCache.set(currency, symbol);
-		return symbol;
-	} catch {
-		_symbolCache.set(currency, currency);
-		return currency;
-	}
+	return getCurrencyMeta(currency).symbol;
 }
 
 export { getSymbol as getCurrencySymbol };
@@ -82,36 +79,73 @@ export { getSymbol as getCurrencySymbol };
 // Number Formatting
 // =============================================================================
 
-const _formatterCache = new Map();
+// Same map as frappe.utils.data.number_format_info: [decimal, thousands, default precision]
+const NUMBER_FORMAT_INFO = {
+	"#,###.##": [".", ",", 2],
+	"#.###,##": [",", ".", 2],
+	"# ###.##": [".", " ", 2],
+	"# ###,##": [",", " ", 2],
+	"#'###.##": [".", "'", 2],
+	"#, ###.##": [".", ", ", 2],
+	"#,##,###.##": [".", ",", 2],
+	"#,###.###": [".", ",", 3],
+	"#.###": ["", ".", 0],
+	"#,###": ["", ",", 0],
+	"#.########": [".", "", 8],
+};
 
-function getFormatter(precision, locale = DEFAULT_LOCALE) {
-	const key = `${locale}:${precision}`;
-	if (!_formatterCache.has(key)) {
-		_formatterCache.set(
-			key,
-			new Intl.NumberFormat(locale, {
-				minimumFractionDigits: precision,
-				maximumFractionDigits: precision,
-			})
-		);
+function getNumberFormatInfo(format) {
+	return NUMBER_FORMAT_INFO[format] || NUMBER_FORMAT_INFO["#,###.##"];
+}
+
+/**
+ * Format a number the same way as frappe.utils.data.fmt_money
+ * (grouping, decimal separator, currency symbol side).
+ */
+function formatAmount(value, precision, currency) {
+	const [decimalStr, commaStr] = getNumberFormatInfo(settings.number_format);
+	const negative = value < 0;
+	const fixed = Math.abs(Number(value) || 0).toFixed(precision);
+	const [intRaw, decRaw = ""] = fixed.split(".");
+
+	const parts = [];
+	let rest = intRaw;
+	if (rest.length > 3) {
+		parts.push(rest.slice(-3));
+		rest = rest.slice(0, -3);
+		const group = settings.number_format === "#,##,###.##" ? 2 : 3;
+		while (rest.length > group) {
+			parts.push(rest.slice(-group));
+			rest = rest.slice(0, -group);
+		}
 	}
-	return _formatterCache.get(key);
+	if (rest) parts.push(rest);
+	parts.reverse();
+
+	let amount = parts.join(commaStr);
+	if (precision && decimalStr) {
+		amount += decimalStr + decRaw;
+	}
+	if (negative && amount !== "0") {
+		amount = `-${amount}`;
+	}
+
+	if (!currency || settings.hide_currency_symbol) return amount;
+
+	const { symbol, symbol_on_right } = getCurrencyMeta(currency);
+	return symbol_on_right ? `${amount} ${symbol}` : `${symbol} ${amount}`;
 }
 
 /** Format value as currency string with symbol */
-export function formatCurrency(value, currency = DEFAULT_CURRENCY, locale = DEFAULT_LOCALE) {
+export function formatCurrency(value, currency = DEFAULT_CURRENCY) {
 	if (typeof value !== "number" || Number.isNaN(value)) return "";
-	const abs = Math.abs(value);
-	const formatted = `${getSymbol(currency)} ${getFormatter(settings.currency, locale).format(
-		abs
-	)}`;
-	return value < 0 ? `-${formatted}` : formatted;
+	return formatAmount(value, settings.currency, currency);
 }
 
 /** Format value as number string (no symbol) */
-export function formatCurrencyNumber(value, locale = DEFAULT_LOCALE) {
+export function formatCurrencyNumber(value) {
 	if (typeof value !== "number" || Number.isNaN(value)) return "0.00";
-	return getFormatter(settings.currency, locale).format(value);
+	return formatAmount(value, settings.currency, null);
 }
 
 /** Get CSS class for positive/negative values */

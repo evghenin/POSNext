@@ -9,7 +9,7 @@ const CACHE_STRUCTURE = {
 	customers: ["name", "customer_name", "mobile_no", "email_id"],
 	item_prices: ["price_list", "item_code", "price"],
 	local_stock: ["item_code", "warehouse", "actual_qty"],
-	payment_methods: ["mode_of_payment", "pos_profile", "default", "allow_in_returns", "type"],
+	payment_methods: ["mode_of_payment", "pos_profile", "default", "allow_in_returns", "type", "pos_method"],
 };
 
 // Generate cache version from structure hash

@@ -120,6 +120,30 @@
 								</div>
 							</div>
 
+							<div
+								v-if="closingData.deposits_total > 0"
+								class="text-start bg-emerald-50 border border-emerald-200 rounded-lg p-3 md:p-4"
+							>
+								<div class="text-emerald-700 text-xs uppercase font-medium mb-1">
+									{{ __("Cash deposits") }}
+								</div>
+								<div class="text-lg md:text-2xl font-bold text-emerald-900 mb-0.5 md:mb-1 truncate">
+									+{{ formatCurrency(closingData.deposits_total) }}
+								</div>
+							</div>
+
+							<div
+								v-if="closingData.collections_total > 0"
+								class="text-start bg-sky-50 border border-sky-200 rounded-lg p-3 md:p-4"
+							>
+								<div class="text-sky-700 text-xs uppercase font-medium mb-1">
+									{{ __("Cash collections") }}
+								</div>
+								<div class="text-lg md:text-2xl font-bold text-sky-900 mb-0.5 md:mb-1 truncate">
+									-{{ formatCurrency(closingData.collections_total) }}
+								</div>
+							</div>
+
 							<!-- Net Sales (after returns) -->
 							<div
 								class="text-start bg-green-50 border border-green-200 rounded-lg p-3 md:p-4"
@@ -1160,7 +1184,7 @@
 					</Button>
 
 					<Button
-						v-if="eodPrintFailed"
+						v-if="eodPrintFailed && shiftStore.allowPosPrint"
 						variant="solid"
 						theme="blue"
 						@click="retryEodPrint"
@@ -1184,6 +1208,7 @@ import { useToast } from "../composables/useToast";
 import { usePOSSettingsStore } from "../stores/posSettings";
 import { usePOSShiftStore } from "../stores/posShift";
 import { printEODReport } from "../utils/printEod";
+import { parseError } from "../utils/errorHandler";
 import TranslatedHTML from "./common/TranslatedHTML.vue";
 
 const props = defineProps({
@@ -1293,7 +1318,8 @@ async function loadClosingData() {
 	} catch (error) {
 		console.error("Error loading closing data:", error);
 		errorMessage.value =
-			"Unable to load shift data. Please check your connection and try again.";
+			parseError(error).message ||
+			__("Unable to load shift data. Please check your connection and try again.");
 	}
 }
 
@@ -1339,7 +1365,7 @@ async function submitClosing() {
 		// Submit to server
 		const result = await submitResource.submit({ closing_shift: closingData.value });
 		const closingShiftName = result?.name ?? submitResource.data?.name;
-		if (closingShiftName) {
+		if (closingShiftName && shiftStore.allowPosPrint) {
 			try {
 				await printEODReport(closingShiftName);
 				eodPrintFailed.value = null;
@@ -1366,7 +1392,9 @@ async function submitClosing() {
 		}
 	} catch (error) {
 		console.error("Error submitting closing shift:", error);
-		errorMessage.value = "Failed to close shift. Please verify all amounts and try again.";
+		errorMessage.value =
+			parseError(error).message ||
+			__("Failed to close shift. Please verify all amounts and try again.");
 	}
 }
 
@@ -1414,7 +1442,7 @@ const reconciliationMessage = computed(() => {
 	if (showSuccessReport.value && hideExpectedAmount.value) {
 		return "Shift closed successfully - Review the final reconciliation below";
 	}
-	return "Count your cash and enter actual amounts below";
+	return __("Count your cash and enter actual amounts below");
 });
 
 // Computed properties for real-time recalculation

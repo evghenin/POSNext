@@ -239,7 +239,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	const hasCustomer = computed(() => !!customer.value);
 
 	// Actions
-	function addItem(item, qty = 1, _autoAdd = false, currentProfile = null) {
+	async function addItem(item, qty = 1, _autoAdd = false, currentProfile = null) {
 		if (
 			currentProfile &&
 			settingsStore.shouldEnforceStockValidation() &&
@@ -255,6 +255,23 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			const check = checkStockAvailability(item, totalQty, warehouse);
 			if (!check.available) {
 				throw new Error(check.error);
+			}
+		}
+
+		const profileName = currentProfile?.name || currentProfile;
+		if (item.tax_rate_percent == null && profileName && item.item_code) {
+			try {
+				const rate = await call(
+					"erpnext_moldova_pos.api.pos_tax.get_item_tax_rate",
+					{
+						pos_profile: profileName,
+						item_code: item.item_code,
+						base_net_rate: item.price_list_rate || item.rate || 0,
+					},
+				);
+				item.tax_rate_percent = Number(rate) || 0;
+			} catch (error) {
+				console.error("Failed to load item tax rate", error);
 			}
 		}
 

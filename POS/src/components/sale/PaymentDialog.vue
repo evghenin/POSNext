@@ -623,13 +623,7 @@
 										</div>
 									</div>
 									<div class="text-sm font-semibold text-gray-900 text-end">
-										{{
-											formatCurrency(
-												item.amount ||
-													(item.qty || item.quantity) *
-														(item.rate || item.price_list_rate)
-											)
-										}}
+										{{ formatCurrency(getPaymentLineAmount(item)) }}
 									</div>
 								</div>
 
@@ -808,7 +802,10 @@
 								</div>
 							</div>
 							<!-- Subtotal -->
-							<div class="flex items-center justify-between text-sm">
+							<div
+								v-if="!settingsStore.displayGrossAmounts"
+								class="flex items-center justify-between text-sm"
+							>
 								<span class="text-gray-600 text-start">{{ __("Subtotal") }}</span>
 								<span class="font-medium text-gray-900 text-end">{{
 									formatCurrency(subtotal)
@@ -1164,14 +1161,24 @@
 										: 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 text-gray-700',
 								]"
 							>
-								<span :class="isSmallMobile ? 'text-xs' : 'text-sm lg:text-lg'">{{
-									isWalletPaymentMethod(method.mode_of_payment)
-										? "🎁"
-										: getPaymentIcon(method.type)
-								}}</span>
-								<span class="truncate max-w-[80px] lg:max-w-none">{{
-									__(method.mode_of_payment)
-								}}</span>
+								<span :class="isSmallMobile ? 'text-xs' : 'text-sm lg:text-lg'">
+									<MiaMark
+										v-if="
+											!isWalletPaymentMethod(method.mode_of_payment) &&
+											isMiaPayment(method.pos_method)
+										"
+									/>
+									<template v-else>{{
+										isWalletPaymentMethod(method.mode_of_payment)
+											? "🎁"
+											: getPaymentIcon(method.type, method.pos_method)
+									}}</template>
+								</span>
+								<span
+									v-if="!isMiaPayment(method.pos_method)"
+									class="truncate max-w-[80px] lg:max-w-none"
+									>{{ __(method.mode_of_payment) }}</span
+								>
 								<!-- Wallet Balance Badge -->
 								<span
 									v-if="
@@ -2030,7 +2037,8 @@ import {
 	getCurrencySymbol,
 	roundCurrency,
 } from "@/utils/currency";
-import { getPaymentIcon } from "@/utils/payment";
+import MiaMark from "@/components/icons/MiaMark.vue";
+import { getPaymentIcon, isMiaPayment } from "@/utils/payment";
 import { offlineWorker } from "@/utils/offline/workerClient";
 import { logger } from "@/utils/logger";
 import { Dialog, createResource, call } from "frappe-ui";
@@ -2416,6 +2424,8 @@ function isWalletPaymentMethod(methodName) {
 // Check if a payment method is a cash payment (allows overpayment/change)
 function isCashPaymentMethod(method) {
 	if (!method) return false;
+	// Station code wins over the ERPNext account type. Only cash may exceed the bill.
+	if (method.pos_method) return method.pos_method === "cash";
 	// Check by account_type first (most reliable - from linked Account)
 	const accountType = (method.account_type || "").toLowerCase();
 	if (accountType === "cash") return true;
@@ -3178,6 +3188,20 @@ function _upsertPaymentEntry(method, amt) {
 	}
 }
 
+// Change is cash only. Non-cash lines, including a quick-amount tap, stay within the receipt.
+function nonCashExceedsReceipt(method, amt) {
+	if (isCashPaymentMethod(method)) return false;
+	const current = paymentEntries.value
+		.filter((entry) => {
+			const m = paymentMethods.value.find(
+				(pm) => pm.mode_of_payment === entry.mode_of_payment
+			);
+			return m && !isCashPaymentMethod(m) && !entry.is_customer_credit;
+		})
+		.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+	return roundCurrency(current + amt) > roundCurrency(props.grandTotal) + 0.009;
+}
+
 // Quick add payment (long press action)
 function quickAddPayment(method) {
 	if (remainingAmount.value <= 0) return;
@@ -3325,6 +3349,15 @@ async function addCustomPayment(method, amount) {
 			amt = walletAvailable;
 			isPartialWalletPayment = true;
 		}
+	}
+
+	if (nonCashExceedsReceipt(method, amt)) {
+		showWarning(
+			__("Change is given from cash only. This payment cannot exceed {0}.", [
+				formatCurrency(roundCurrency(props.grandTotal)),
+			])
+		);
+		return;
 	}
 
 	// Exact amount validation for non-cash payments
@@ -3517,6 +3550,19 @@ function completePayment() {
 
 function formatCurrency(amount) {
 	return formatCurrencyUtil(Number.parseFloat(amount || 0), props.currency);
+}
+
+function getPaymentLineAmount(item) {
+	const qty = Number.parseFloat(item?.qty || item?.quantity) || 0;
+	const rate = Number.parseFloat(item?.rate || item?.price_list_rate) || 0;
+	const net =
+		item?.amount !== null && item?.amount !== undefined && item?.amount !== ""
+			? Number.parseFloat(item.amount) || 0
+			: qty * rate;
+	if (!settingsStore.displayGrossAmounts) {
+		return net;
+	}
+	return net + (Number.parseFloat(item?.tax_amount) || 0);
 }
 
 // Get total amount for a specific payment method

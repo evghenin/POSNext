@@ -6,16 +6,20 @@ from frappe import translate
 
 
 @frappe.whitelist()
-def get_app_translations():
+def get_app_translations(locale=None):
 	"""
-	Get all translations for the current user's language.
-	This is a wrapper around frappe.translate.get_all_translations
-	since the original function is not whitelisted.
+	Get POS interface translations for an explicit locale.
+
+	The locale is the cashier's POS language, not User.language (Desk).
+	When omitted, the saved POS language is used, then English.
 
 	Returns:
 		dict: Translation dictionary {source: translated}
 	"""
-	lang = frappe.local.lang or "en"
+	lang = (locale or _get_pos_language() or "en").lower()
+	allowed = get_allowed_locales_from_settings()
+	if lang not in allowed:
+		lang = "en" if "en" in allowed else next(iter(allowed))
 	return translate.get_all_translations(lang)
 
 
@@ -34,10 +38,7 @@ def get_user_language():
 	if frappe.session.user == "Guest":
 		frappe.throw("Authentication required", frappe.AuthenticationError)
 
-	# Get user's language preference
-	language = frappe.db.get_value("User", frappe.session.user, "language") or "en"
-
-	return {"success": True, "locale": language.lower()}
+	return {"success": True, "locale": _get_pos_language() or "en"}
 
 
 @frappe.whitelist()
@@ -50,6 +51,14 @@ def get_allowed_locales():
 	"""
 	allowed = get_allowed_locales_from_settings()
 	return {"success": True, "locales": list(allowed)}
+
+
+def _get_pos_language():
+	"""Cashier's POS interface language. Empty when they have not chosen one."""
+	if not frappe.db.has_column("User", "pos_language"):
+		return None
+	lang = frappe.db.get_value("User", frappe.session.user, "pos_language")
+	return (lang or "").lower() or None
 
 
 def get_allowed_locales_from_settings():
@@ -82,7 +91,9 @@ def get_allowed_locales_from_settings():
 @frappe.whitelist()
 def change_user_language(locale):
 	"""
-	Change the language preference for the current user.
+	Change the POS interface language for the current cashier.
+
+	Writes User.pos_language. User.language (Desk) is left unchanged.
 
 	Args:
 		locale (str): Language code (e.g., 'en', 'ar')
@@ -113,9 +124,9 @@ def change_user_language(locale):
 	if locale not in allowed_locales:
 		frappe.throw(f"Locale '{locale}' is not supported", frappe.ValidationError)
 
-	# Update user's language preference
+	# POS interface language only. Desk keeps User.language.
 	try:
-		frappe.db.set_value("User", frappe.session.user, "language", locale)
+		frappe.db.set_value("User", frappe.session.user, "pos_language", locale)
 		frappe.db.commit()
 
 		return {"success": True, "message": f"Language changed to {locale}", "locale": locale}

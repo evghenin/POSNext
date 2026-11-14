@@ -635,3 +635,69 @@ def validate_coupon(coupon_code: str, company: str, customer: str | None = None)
 		return {"valid": False, "message": _("This coupon is not valid for this customer")}
 
 	return {"valid": True, "coupon": coupon}
+
+
+@frappe.whitelist()
+def item_has_active_promotion(item_code: str, company: str | None = None, qty: float | int | str = 1) -> dict:
+	"""Whether this quantity of an item matches an active selling pricing rule.
+
+	Used by the item edit dialog to lock manual rate edits while a promotion applies.
+	"""
+	quantity = flt(qty)
+	if not item_code or quantity <= 0:
+		return {"has_promotion": False}
+
+	item = frappe.db.get_value("Item", item_code, ["item_group", "brand"], as_dict=True)
+	if not item:
+		return {"has_promotion": False}
+
+	rule = frappe.db.sql(
+		"""
+		SELECT pr.name
+		FROM `tabPricing Rule` pr
+		WHERE
+			pr.disable = 0
+			AND pr.selling = 1
+			AND (pr.company IS NULL OR pr.company = '' OR pr.company = %(company)s)
+			AND (pr.valid_from IS NULL OR pr.valid_from <= %(date)s)
+			AND (pr.valid_upto IS NULL OR pr.valid_upto >= %(date)s)
+			AND (IFNULL(pr.min_qty, 0) = 0 OR pr.min_qty <= %(qty)s)
+			AND (IFNULL(pr.max_qty, 0) = 0 OR pr.max_qty >= %(qty)s)
+			AND (
+				(
+					pr.apply_on = 'Item Code'
+					AND EXISTS (
+						SELECT 1 FROM `tabPricing Rule Item Code` ic
+						WHERE ic.parent = pr.name AND ic.item_code = %(item_code)s
+					)
+				)
+				OR (
+					pr.apply_on = 'Item Group'
+					AND %(item_group)s IS NOT NULL
+					AND EXISTS (
+						SELECT 1 FROM `tabPricing Rule Item Group` ig
+						WHERE ig.parent = pr.name AND ig.item_group = %(item_group)s
+					)
+				)
+				OR (
+					pr.apply_on = 'Brand'
+					AND IFNULL(%(brand)s, '') != ''
+					AND EXISTS (
+						SELECT 1 FROM `tabPricing Rule Brand` b
+						WHERE b.parent = pr.name AND b.brand = %(brand)s
+					)
+				)
+			)
+		LIMIT 1
+		""",
+		{
+			"item_code": item_code,
+			"item_group": item.item_group,
+			"brand": item.brand,
+			"company": company or "",
+			"date": nowdate(),
+			"qty": quantity,
+		},
+	)
+
+	return {"has_promotion": bool(rule)}

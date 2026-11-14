@@ -209,6 +209,7 @@
 									</svg>
 								</button>
 								<button
+									v-if="shiftStore.allowPosPrint"
 									@click="printInvoice(invoice)"
 									class="p-1.5 sm:p-2 hover:bg-green-50 rounded-lg transition-colors touch-manipulation"
 									:title="
@@ -420,8 +421,11 @@
 
 <script setup>
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency";
+import { usePOSShiftStore } from "@/stores/posShift";
 import { Button, Dialog } from "frappe-ui";
 import { computed, ref, watch } from "vue";
+
+const shiftStore = usePOSShiftStore();
 
 const props = defineProps({
 	modelValue: Boolean,

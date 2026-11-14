@@ -1,0 +1,20 @@
+{
+ "custom_fields": [
+  {
+   "dt": "User",
+   "fieldname": "pos_language",
+   "fieldtype": "Link",
+   "insert_after": "language",
+   "label": "POS Language",
+   "options": "Language",
+   "description": "Interface language for POS Next. Does not change the ERPNext Desk language.",
+   "translatable": 0,
+   "name": "User-pos_language"
+  }
+ ],
+ "custom_perms": [],
+ "doctype": "User",
+ "links": [],
+ "property_setters": [],
+ "sync_on_migrate": 1
+}

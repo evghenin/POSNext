@@ -50,6 +50,7 @@
   "section_break_pricing",
   "decimal_precision",
   "tax_inclusive",
+  "display_gross_amounts",
   "section_break_customer",
   "allow_customer_purchase_order",
   "allow_duplicate_customer_names",
@@ -390,6 +391,13 @@
    "fieldname": "tax_inclusive",
    "fieldtype": "Check",
    "label": "Tax Inclusive"
+  },
+  {
+   "default": "0",
+   "description": "Line amounts include tax. The subtotal row is hidden in the cart and payment dialog.",
+   "fieldname": "display_gross_amounts",
+   "fieldtype": "Check",
+   "label": "Show Gross Amounts"
   },
   {
    "collapsible": 1,

@@ -628,6 +628,15 @@
 													)
 												"
 											/>
+											<CheckboxField
+												v-model="settings.display_gross_amounts"
+												:label="__('Show Gross Amounts')"
+												:description="
+													__(
+														'Line amounts include tax. The subtotal row is hidden in the cart and payment dialog.'
+													)
+												"
+											/>
 											<NumberField
 												v-model="settings.max_discount_allowed"
 												:label="__('Max Discount (%)')"
@@ -1202,6 +1211,7 @@ const settings = ref({
 	silent_print: 0,
 	allow_negative_stock: 0,
 	tax_inclusive: 0,
+	display_gross_amounts: 0,
 	cart_lifo: 0,
 });
 

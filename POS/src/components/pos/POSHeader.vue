@@ -322,7 +322,7 @@
 					</div>
 
 					<!-- Printer - Visible only while shift is open -->
-					<div v-if="hasOpenShift" class="hidden md:block relative">
+					<div v-if="hasOpenShift && allowPosPrint" class="hidden md:block relative">
 						<ActionButton
 							:icon="printerIcon"
 							:title="
@@ -431,6 +431,10 @@ const props = defineProps({
 	shiftDuration: {
 		type: String,
 		default: null,
+	},
+	allowPosPrint: {
+		type: Boolean,
+		default: false,
 	},
 	hasOpenShift: {
 		type: Boolean,

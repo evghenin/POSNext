@@ -89,6 +89,16 @@ def get_pos_settings(pos_profile):
 		return DEFAULT_POS_SETTINGS.copy()
 
 
+def _pos_method_column(mode_of_payment):
+	"""Moldova POS stores the station code on Mode of Payment.pos_method.
+
+	Sites without that custom field keep the previous payload.
+	"""
+	if frappe.get_meta("Mode of Payment").has_field("pos_method"):
+		return [mode_of_payment.pos_method]
+	return []
+
+
 @frappe.whitelist()
 def get_payment_methods(pos_profile):
 	"""Get available payment methods from POS Profile with optimized queries"""
@@ -126,6 +136,7 @@ def get_payment_methods(pos_profile):
 				POSPaymentMethod.allow_in_returns,
 				Coalesce(ModeOfPayment.type, "Cash").as_("type"),
 				Coalesce(Account.account_type, "").as_("account_type"),
+				*_pos_method_column(ModeOfPayment),
 			)
 			.where(POSPaymentMethod.parent == pos_profile)
 			.orderby(POSPaymentMethod.idx)

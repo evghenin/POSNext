@@ -16,6 +16,8 @@ Data Returned:
         - float: Decimal places for rates/quantities (default: 3)
         - rounding_method: "Banker's Rounding" or "Commercial Rounding"
         - number_format: Pattern like "#,###.##"
+        - hide_currency_symbol: Global Defaults flag
+        - currencies: symbol and symbol_on_right for each Currency
     - shift: Current open POS Opening Shift (if any)
     - pos_profile: POS Profile configuration
     - pos_settings: POS-specific settings
@@ -141,13 +143,14 @@ def _get_authorization_pin_length():
 
 def _get_user_language():
 	"""
-	Get user's language preference from User doctype.
+	Get the cashier's POS interface language (User.pos_language).
 
 	Returns:
 		str: Language code in lowercase (e.g., "en", "ar", "de")
 	"""
-	lang = frappe.db.get_value("User", frappe.session.user, "language")
-	return (lang or "en").lower()
+	from pos_next.api.localization import _get_pos_language
+
+	return _get_pos_language() or "en"
 
 
 def _get_precision_settings():
@@ -163,6 +166,8 @@ def _get_precision_settings():
 			float: int - Decimal places for rates/quantities (default: 3)
 			rounding_method: str - "Banker's Rounding" or "Commercial Rounding"
 			number_format: str - Number format pattern (e.g., "#,###.##")
+			hide_currency_symbol: bool - Global Defaults hide_currency_symbol
+			currencies: dict - symbol and symbol_on_right per Currency name
 		}
 	"""
 	settings = frappe.db.get_value(
@@ -171,12 +176,22 @@ def _get_precision_settings():
 		["currency_precision", "float_precision", "rounding_method", "number_format"],
 		as_dict=True,
 	)
+	hide_symbol = frappe.db.get_single_value("Global Defaults", "hide_currency_symbol") == "Yes"
+	currencies = {
+		row.name: {
+			"symbol": row.symbol or row.name,
+			"symbol_on_right": bool(row.symbol_on_right),
+		}
+		for row in frappe.get_all("Currency", fields=["name", "symbol", "symbol_on_right"])
+	}
 
 	return {
 		"currency": int(settings.currency_precision) if settings.currency_precision else 2,
 		"float": int(settings.float_precision) if settings.float_precision else 3,
 		"rounding_method": settings.rounding_method,
 		"number_format": settings.number_format,
+		"hide_currency_symbol": hide_symbol,
+		"currencies": currencies,
 	}
 
 
@@ -275,6 +290,8 @@ def _get_payment_methods(pos_profile_name):
 			- type: str ("Cash", "Bank", etc.)
 	"""
 	try:
+		from pos_next.api.pos_profile import _pos_method_column
+
 		POSPaymentMethod = DocType("POS Payment Method")
 		ModeOfPayment = DocType("Mode of Payment")
 
@@ -287,6 +304,7 @@ def _get_payment_methods(pos_profile_name):
 				POSPaymentMethod.default,
 				POSPaymentMethod.allow_in_returns,
 				Coalesce(ModeOfPayment.type, "Cash").as_("type"),
+				*_pos_method_column(ModeOfPayment),
 			)
 			.where(POSPaymentMethod.parent == pos_profile_name)
 			.orderby(POSPaymentMethod.idx)

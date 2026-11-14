@@ -55,6 +55,18 @@ export const SUPPORTED_LOCALES = {
 		countryCode: "br",
 		dir: "ltr",
 	},
+	ru: {
+		name: "Russian",
+		nativeName: "Русский",
+		countryCode: "ru",
+		dir: "ltr",
+	},
+	ro: {
+		name: "Romanian",
+		nativeName: "Română",
+		countryCode: "md",
+		dir: "ltr",
+	},
 };
 
 /**
@@ -126,31 +138,24 @@ async function fetchLanguageFromServer() {
 
 /**
  * Detect current language from cache sources (when offline)
- * Priority: Frappe boot → localStorage → browser → default
+ * Priority: localStorage → browser → default.
+ * Desk language (frappe.boot.lang) is intentionally ignored.
  * @returns {string} Language code
  */
 function detectCachedLanguage() {
-	// 1. Check Frappe boot data (user's saved preference)
-	if (typeof window !== "undefined" && window.frappe?.boot?.lang) {
-		const lang = window.frappe.boot.lang.toLowerCase();
-		if (SUPPORTED_LOCALES[lang]) {
-			return lang;
-		}
-	}
-
-	// 2. Check localStorage
+	// 1. Cashier's last POS language on this browser
 	const stored = localStorage.getItem(PREFARED_LANGUAGE_KEY);
 	if (stored && SUPPORTED_LOCALES[stored]) {
 		return stored;
 	}
 
-	// 3. Check browser language
+	// 2. Check browser language
 	const browserLang = navigator.language.split("-")[0].toLowerCase();
 	if (SUPPORTED_LOCALES[browserLang]) {
 		return browserLang;
 	}
 
-	// 4. Default to English
+	// 3. Default to English
 	return "en";
 }
 
@@ -203,7 +208,7 @@ export function useLocale() {
 		// Store preference in localStorage
 		localStorage.setItem(PREFARED_LANGUAGE_KEY, newLocale);
 
-		// Update Frappe user settings first (this changes the user's language in Frappe)
+		// Save the cashier's POS language. Does not change User.language (Desk).
 		try {
 			await call("pos_next.api.localization.change_user_language", {
 				locale: newLocale,

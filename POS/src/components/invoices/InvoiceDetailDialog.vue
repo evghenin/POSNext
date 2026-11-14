@@ -478,7 +478,7 @@
 				<Button variant="subtle" @click="show = false">
 					{{ __("Close") }}
 				</Button>
-				<Button @click="handlePrint">
+				<Button v-if="shiftStore.allowPosPrint" @click="handlePrint">
 					<template #prefix>
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path
@@ -502,10 +502,12 @@ import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/
 import { getInvoiceStatusColor } from "@/utils/invoice";
 import { logger } from "@/utils/logger";
 import { hydrateLocalOnlyInvoice, isLocalOnlyInvoiceName } from "@/utils/printInvoice";
+import { usePOSShiftStore } from "@/stores/posShift";
 import { Button, Dialog, call } from "frappe-ui";
 import { ref, watch, nextTick, computed } from "vue";
 
 const log = logger.create("InvoiceDetailDialog");
+const shiftStore = usePOSShiftStore();
 const { formatDate, formatTime } = useFormatters();
 
 const props = defineProps({

@@ -628,7 +628,7 @@
 "{0}: {1} Bundles","{0}: {1} حزم",""
 "Auto-Add ON - Type or scan barcode","الإضافة التلقائية مفعلة - اكتب أو امسح الباركود",""
 "Scanner ON - Enable Auto for automatic addition","الماسح مفعل - فعّل التلقائي للإضافة التلقائية",""
-"Search by item code, name or scan barcode","البحث برمز المنتج أو الاسم أو مسح الباركود",""
+"Search by item code, name, item group or scan barcode","البحث برمز المنتج أو الاسم أو مجموعة المنتجات أو مسح الباركود",""
 "Item Not Found: No item found with barcode: {0}","المنتج غير موجود: لم يتم العثور على منتج بالباركود: {0}",""
 "Multiple Items Found: {0} items match barcode. Please refine search.","تم العثور على منتجات متعددة: {0} منتج يطابق الباركود. يرجى تحسين البحث.",""
 "Multiple Items Found: {0} items match. Please select one.","تم العثور على منتجات متعددة: {0} منتج. يرجى اختيار واحد.",""

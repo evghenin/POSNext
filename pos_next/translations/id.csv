@@ -612,7 +612,7 @@
 "{0}: {1} Bundles","{0}: {1} Paket Item",""
 "Auto-Add ON - Type or scan barcode","Tambah Otomatis Item AKTIF - Ketik atau pindai barcode",""
 "Scanner ON - Enable Auto for automatic addition","Pemindai AKTIF - Aktifkan tambah otomatis item untuk penambahan otomatis",""
-"Search by item code, name or scan barcode","Cari berdasarkan kode item, nama, atau pemindaian barcode",""
+"Search by item code, name, item group or scan barcode","Cari berdasarkan kode item, nama, grup item, atau pemindaian barcode",""
 "Item Not Found: No item found with barcode: {0}","Item Tidak Ditemukan: Tidak ada item yang ditemukan dengan barcode: {0}",""
 "Multiple Items Found: {0} items match barcode. Please refine search.","Beberapa Item Ditemukan: {0} item cocok dengan barcode. Harap perbaiki pencarian.",""
 "Multiple Items Found: {0} items match. Please select one.","Beberapa Item Ditemukan: {0} item cocok. Silakan pilih salah satu.",""

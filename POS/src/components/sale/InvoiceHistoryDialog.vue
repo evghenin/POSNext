@@ -108,6 +108,7 @@
 										</svg>
 									</Button>
 									<Button
+										v-if="shiftStore.allowPosPrint"
 										variant="ghost"
 										theme="green"
 										size="sm"
@@ -167,11 +168,13 @@ import { useFormatters } from "@/composables/useFormatters"
 import { useToast } from "@/composables/useToast"
 import { DEFAULT_CURRENCY, DEFAULT_LOCALE, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { getInvoiceStatusColor } from "@/utils/invoice"
+import { usePOSShiftStore } from "@/stores/posShift"
 import { Button, Dialog, Input, createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 import ReturnInvoiceDialog from "./ReturnInvoiceDialog.vue"
 
 const { showError } = useToast();
+const shiftStore = usePOSShiftStore();
 const { formatDate, formatTime } = useFormatters();
 
 const props = defineProps({

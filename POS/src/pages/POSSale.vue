@@ -3,14 +3,9 @@
 		No height: 100vh here. The page fills whatever the host leaves it (see the
 		flex chain in index.css), so chrome above POS — Frappe's navbar, a demo
 		countdown banner — shortens the page instead of pushing its bottom off the
-		screen. padding-bottom keeps POSFooter's fixed strip from sitting on top of
-		the cart's Checkout button; the footer publishes its own height, so this
-		follows if it is ever restyled.
+		screen.
 	-->
-	<div
-		class="flex flex-1 flex-col min-h-0 bg-gray-50 overflow-x-hidden"
-		style="padding-bottom: var(--pos-footer-h, 45px)"
-	>
+	<div class="flex flex-1 flex-col min-h-0 bg-gray-50 overflow-x-hidden">
 		<!-- Loading State -->
 		<LoadingSpinner v-if="uiStore.isLoading" />
 
@@ -21,6 +16,7 @@
 				:current-time="shiftStore.currentTime"
 				:shift-duration="shiftStore.shiftDuration"
 				:has-open-shift="shiftStore.hasOpenShift"
+				:allow-pos-print="shiftStore.allowPosPrint"
 				:profile-name="shiftStore.profileName"
 				:user-name="userName"
 				:user-image="userImage"
@@ -175,6 +171,36 @@
 						<span>{{ __("POS Expense") }}</span>
 					</button>
 					<button
+						v-if="canMoveCash"
+						@click="openCashMovement('deposit')"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-green-50 flex items-center gap-3 transition-colors"
+					>
+						<svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+							/>
+						</svg>
+						<span>{{ __("Cash deposit") }}</span>
+					</button>
+					<button
+						v-if="canMoveCash"
+						@click="openCashMovement('withdrawal')"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-red-50 flex items-center gap-3 transition-colors"
+					>
+						<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+							/>
+						</svg>
+						<span>{{ __("Cash collection") }}</span>
+					</button>
+					<button
 						v-if="canAccessShiftActions"
 						@click="openReturnDialog"
 						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-red-50 flex items-center gap-3 transition-colors"
@@ -262,8 +288,7 @@
 			<!-- Main Content: Responsive Layout -->
 			<div
 				v-if="shiftStore.hasOpenShift"
-				class="flex-1 flex overflow-hidden relative"
-				style="max-height: calc(100vh - 60px - var(--header-height, 60px))"
+				class="flex-1 flex overflow-hidden relative min-h-0"
 			>
 				<!-- Icon-Only Management Slider - Always Visible -->
 				<ManagementSlider
@@ -448,6 +473,9 @@
 								@show-return="openReturnDialog"
 								@show-expense="openExpenseDialog"
 								:allow-pos-expense="canRecordPosExpense"
+								:allow-cash-movement="canMoveCash"
+								@show-cash-deposit="openCashMovement('deposit')"
+								@show-cash-collection="openCashMovement('withdrawal')"
 								@close-shift="handleCloseShift"
 								@show-shift-history="navigateToShiftHistory"
 							/>
@@ -495,8 +523,7 @@
 			<!-- No Shift Placeholder -->
 			<div
 				v-else
-				class="flex-1 flex items-center justify-center bg-gray-50"
-				style="max-height: calc(100vh - 60px - var(--header-height, 60px))"
+				class="flex-1 flex items-center justify-center bg-gray-50 min-h-0"
 			>
 				<div class="text-center">
 					<div
@@ -610,6 +637,16 @@
 				@expense-cancelled="handleExpenseCancelled"
 			/>
 
+			<CashMovementDialog
+				v-model="showCashDialog"
+				:pos-profile="shiftStore.profileName"
+				:opening-shift="shiftStore.currentShift?.name"
+				:movement-type="cashMovementType"
+				:currency="shiftStore.profileCurrency"
+				:pending-receipt="pendingCash"
+				@changed="loadCashMovementState"
+			/>
+
 			<!-- Coupon Dialog -->
 			<CouponDialog
 				v-model="uiStore.showCouponDialog"
@@ -683,7 +720,7 @@
 			<ShiftHistoryDialog
 				v-model="showShiftHistoryDialog"
 				:pos-profile="shiftStore.profileName"
-				:currency="shiftStore.profileCurrency"
+				:currency="shiftStore.companyCurrency"
 			/>
 
 			<!-- Offline Invoices Dialog -->
@@ -989,6 +1026,7 @@
 							{{ __("Close") }}
 						</Button>
 						<Button
+							v-if="shiftStore.allowPosPrint"
 							variant="solid"
 							theme="blue"
 							@click="
@@ -1046,11 +1084,22 @@
 						</Button>
 						<div v-else></div>
 						<div class="flex gap-2">
-							<Button variant="subtle" @click="uiStore.clearError()">
+							<Button
+								v-if="uiStore.errorRetryAction !== 'continue'"
+								variant="subtle"
+								@click="uiStore.clearError()"
+							>
 								{{ __("Close") }}
 							</Button>
 							<Button
-								v-if="uiStore.errorRetryAction"
+								v-if="uiStore.errorRetryAction === 'continue'"
+								variant="solid"
+								@click="uiStore.clearError()"
+							>
+								{{ __("Continue") }}
+							</Button>
+							<Button
+								v-else-if="uiStore.errorRetryAction"
 								variant="solid"
 								@click="handleErrorRetry"
 							>
@@ -1061,6 +1110,8 @@
 				</template>
 			</Dialog>
 
+			<TerminalWaitOverlay :show="terminalWait !== null" :card-payment="terminalWait?.card" />
+
 			<!-- Clear Cache Overlay -->
 			<ClearCacheOverlay
 				ref="clearCacheOverlayRef"
@@ -1069,8 +1120,6 @@
 				@confirm="confirmClearCache"
 			/>
 
-			<!-- Footer -->
-			<POSFooter />
 		</template>
 
 		<!-- Session Lock Screen (outside v-if/v-else so it renders even during loading) -->
@@ -1094,7 +1143,6 @@ import ShiftOpeningDialog from "@/components/ShiftOpeningDialog.vue";
 import ClearCacheOverlay from "@/components/common/ClearCacheOverlay.vue";
 import SessionLockScreen from "@/components/common/SessionLockScreen.vue";
 import LoadingSpinner from "@/components/common/LoadingSpinner.vue";
-import POSFooter from "@/components/common/POSFooter.vue";
 import ManagementSlider from "@/components/pos/ManagementSlider.vue";
 import POSHeader from "@/components/pos/POSHeader.vue";
 import BatchSerialDialog from "@/components/sale/BatchSerialDialog.vue";
@@ -1110,10 +1158,12 @@ import ItemsSelector from "@/components/sale/ItemsSelector.vue";
 import OffersDialog from "@/components/sale/OffersDialog.vue";
 import OfflineInvoicesDialog from "@/components/sale/OfflineInvoicesDialog.vue";
 import PaymentDialog from "@/components/sale/PaymentDialog.vue";
+import TerminalWaitOverlay from "@/components/sale/TerminalWaitOverlay.vue";
 import ProductManagement from "@/components/sale/ProductManagement.vue";
 import PromotionManagement from "@/components/sale/PromotionManagement.vue";
 import ReturnInvoiceDialog from "@/components/sale/ReturnInvoiceDialog.vue";
 import ExpenseDialog from "@/components/sale/ExpenseDialog.vue";
+import CashMovementDialog from "@/components/sale/CashMovementDialog.vue";
 import WarehouseAvailabilityDialog from "@/components/sale/WarehouseAvailabilityDialog.vue";
 import POSSettings from "@/components/settings/POSSettings.vue";
 import InvoiceManagement from "@/components/invoices/InvoiceManagement.vue";
@@ -1216,6 +1266,18 @@ const pendingPaymentAfterCustomer = ref(false);
 const logoutAfterClose = ref(false);
 const editCustomer = ref(null); // Customer being edited (null for create mode)
 const showClearCacheDialog = ref(false);
+const terminalWait = ref(null);
+
+const CARD_PAYMENT_TYPES = new Set(["Card", "Credit Card", "Debit Card"]);
+
+function paymentUsesCard(payments) {
+	return (payments || []).some((payment) => {
+		if (!(Number(payment.amount) > 0)) return false;
+		if (CARD_PAYMENT_TYPES.has(payment.type)) return true;
+		const name = String(payment.mode_of_payment || "").toLowerCase();
+		return name.includes("card") || name.includes("карт");
+	});
+}
 const clearCacheOverlayRef = ref(null);
 
 // Debounce timer for offer reapplication
@@ -1340,6 +1402,10 @@ const canAccessShiftActions = computed(() => shiftStore.hasOpenShift);
 const canRecordPosExpense = computed(
 	() => canAccessShiftActions.value && shiftStore.allowPosExpense,
 );
+const canMoveCash = computed(() => canAccessShiftActions.value);
+const showCashDialog = ref(false);
+const cashMovementType = ref("deposit");
+const pendingCash = ref(null);
 
 /** Desk link only for users with the Nexus POS Manager role (from bootstrap API). */
 const canSwitchToDesk = computed(() => Boolean(bootstrapStore.data?.can_switch_to_desk));
@@ -1348,7 +1414,15 @@ const canSwitchToDesk = computed(() => Boolean(bootstrapStore.data?.can_switch_t
 let resizeState = null;
 let bodyStyleSnapshot = null;
 
+watch(
+	() => shiftStore.currentShift?.name,
+	() => {
+		loadCashMovementState();
+	},
+);
+
 onMounted(async () => {
+	loadCashMovementState();
 	// Window resize listeners (passive for better performance)
 	const handleResize = () => {
 		uiStore.setWindowWidth(window.innerWidth);
@@ -1409,6 +1483,10 @@ onMounted(async () => {
 		log.info("Event: Pricing settings changed", changes);
 
 		// Update tax_inclusive setting if it changed
+		if (changes.hasOwnProperty("display_gross_amounts")) {
+			posSettingsStore.reloadSettings();
+		}
+
 		if (changes.hasOwnProperty("tax_inclusive")) {
 			const newTaxInclusive = changes.tax_inclusive.new;
 			log.info(
@@ -2198,6 +2276,7 @@ async function handleErrorRetry() {
 }
 
 async function handlePaymentCompleted(paymentData) {
+	let fiscalSale = false;
 	try {
 		const customerValue = cartStore.customer?.name || cartStore.customer;
 		if (!customerValue && !shiftStore.profileCustomer) {
@@ -2345,7 +2424,7 @@ async function handlePaymentCompleted(paymentData) {
 				draftsStore.deleteDraft(draftIdToDelete);
 			}
 
-			if (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint) {
+			if (shiftStore.allowPosPrint && (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint)) {
 				try {
 					await handlePrintInvoice({ name: offlineReceiptName });
 					showSuccess(
@@ -2373,10 +2452,40 @@ async function handlePaymentCompleted(paymentData) {
 			const soldItemCodes = cartStore.invoiceItems.map((item) => item.item_code);
 			const soldBatches = cartStore.invoiceItems.filter((item) => item.batch_no);
 
-			const result = await cartStore.submitInvoice({
-				isCreditSale: Boolean(paymentData.is_credit_sale),
-				receivableAccount: paymentData.receivable_account || null,
-			});
+			uiStore.showPaymentDialog = false;
+			fiscalSale = true;
+			terminalWait.value = { card: paymentUsesCard(cartStore.payments) };
+			let result;
+			try {
+				result = await cartStore.submitInvoice({
+					isCreditSale: Boolean(paymentData.is_credit_sale),
+					receivableAccount: paymentData.receivable_account || null,
+				});
+			} finally {
+				terminalWait.value = null;
+			}
+
+			const fiscalOutcome = result?.outcome || result?.message?.outcome;
+			if (fiscalOutcome === "link_failure" || fiscalOutcome === "unconfirmed") {
+				uiStore.showPaymentDialog = false;
+				const fiscalMessage =
+					result.message?.message ||
+					result.message ||
+					(fiscalOutcome === "unconfirmed"
+						? __(
+								"The operation could not be completed. Check that the receipt was not printed on the terminal."
+							)
+						: __("The connection to the terminal failed."));
+				uiStore.showError(
+					__("Connection Error"),
+					typeof fiscalMessage === "string"
+						? fiscalMessage
+						: __("The connection to the terminal failed."),
+					null,
+					"continue"
+				);
+				return;
+			}
 
 			if (result) {
 				uiStore.clearLastOfflinePrintDoc();
@@ -2431,7 +2540,7 @@ async function handlePaymentCompleted(paymentData) {
 					log.debug("Background invoice cache refresh failed:", err)
 				);
 
-				if (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint) {
+				if (shiftStore.allowPosPrint && (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint)) {
 					try {
 						await handlePrintInvoice({ name: invoiceName });
 						showSuccess(__("Invoice {0} created and sent to printer", [invoiceName]));
@@ -2448,6 +2557,17 @@ async function handlePaymentCompleted(paymentData) {
 	} catch (error) {
 		log.error("Error submitting invoice:", error);
 		uiStore.showPaymentDialog = false;
+
+		const serverFault = (error?.httpStatus || error?.status || 0) >= 500;
+		if (fiscalSale && serverFault) {
+			uiStore.showError(
+				__("Connection Error"),
+				__("The connection to the terminal failed."),
+				null,
+				"continue"
+			);
+			return;
+		}
 
 		// Checkout failed mid-edit — clear the edit context so the NEXT
 		// checkout doesn't supersede the wrong row on a fresh, unrelated sale.
@@ -2622,6 +2742,40 @@ function openExpenseDialog() {
 	}
 
 	uiStore.showExpenseDialog = true;
+}
+
+function openCashMovement(movementType) {
+	if (!canMoveCash.value) {
+		return;
+	}
+	if (pendingCash.value) {
+		showCashDialog.value = true;
+		return;
+	}
+	cashMovementType.value = movementType;
+	showCashDialog.value = true;
+}
+
+async function loadCashMovementState() {
+	const opening = shiftStore.currentShift?.name;
+	const profile = shiftStore.profileName;
+	if (!opening || !profile) {
+		pendingCash.value = null;
+		return;
+	}
+	try {
+		const state = await call(
+			"erpnext_moldova_pos.api.pos_service_receipt.get_cash_movement_state",
+			{ pos_profile: profile, opening_shift: opening },
+		);
+		pendingCash.value = state.unreconciled || null;
+		if (pendingCash.value) {
+			cashMovementType.value = pendingCash.value.movement_type || "deposit";
+			showCashDialog.value = true;
+		}
+	} catch {
+		pendingCash.value = null;
+	}
 }
 
 function switchToDesk() {
@@ -3213,6 +3367,9 @@ function handleViewInvoice(invoice) {
 
 // Centralized print handler - uses printInvoice.js utilities
 async function handlePrintInvoice(invoiceData) {
+	if (!shiftStore.allowPosPrint) {
+		return;
+	}
 	try {
 		invoiceData = await hydrateLocalOnlyInvoice(invoiceData || {});
 		const offlineSnapshot = uiStore.lastOfflinePrintDoc;

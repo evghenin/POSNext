@@ -740,6 +740,7 @@
 												<span>{{ __("View") }}</span>
 											</button>
 											<button
+												v-if="shiftStore.allowPosPrint"
 												@click="$emit('print-invoice', invoice)"
 												class="px-3 py-2 text-xs font-semibold text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition-colors flex items-center gap-1"
 												:title="__('Print')"
@@ -1033,6 +1034,7 @@ import { getInvoiceStatusColor } from "@/utils/invoice";
 import { useFormatters } from "@/composables/useFormatters";
 import { useToast } from "@/composables/useToast";
 import { useShift } from "@/composables/useShift";
+import { usePOSShiftStore } from "@/stores/posShift";
 import { Button, call, LoadingIndicator } from "frappe-ui";
 import { computed, onMounted, ref, watch } from "vue";
 import { isOffline } from "@/utils/offline/offlineState";
@@ -1047,6 +1049,7 @@ import { logger } from "@/utils/logger";
 const log = logger.create("InvoiceManagement");
 const { showSuccess, showError } = useToast();
 const { currentShift } = useShift();
+const shiftStore = usePOSShiftStore();
 const { formatDate, formatDateTime, formatTime } = useFormatters();
 
 const props = defineProps({

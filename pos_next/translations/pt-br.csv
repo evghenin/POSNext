@@ -614,7 +614,7 @@
 "{0}: {1} Bundles","{0}: {1} Pacotes",""
 "Auto-Add ON - Type or scan barcode","Adição Automática LIGADA - Digite ou escaneie o código de barras",""
 "Scanner ON - Enable Auto for automatic addition","Leitor LIGADO - Habilite o Auto para adição automática",""
-"Search by item code, name or scan barcode","Buscar por código, nome do item ou escanear código de barras",""
+"Search by item code, name, item group or scan barcode","Buscar por código, nome do item, grupo ou escanear código de barras",""
 "Item Not Found: No item found with barcode: {0}","Item Não Encontrado: Nenhum item encontrado com código de barras: {0}",""
 "Multiple Items Found: {0} items match barcode. Please refine search.","Múltiplos Itens Encontrados: {0} itens correspondem ao código. Por favor, refine a busca.",""
 "Multiple Items Found: {0} items match. Please select one.","Múltiplos Itens Encontrados: {0} itens correspondem. Por favor, selecione um.",""

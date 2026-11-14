@@ -58,12 +58,11 @@ def apply_tax_inclusive(doc):
 				has_changes = True
 			continue
 
-		# Apply tax inclusive setting
+		# The checkbox adds inclusive tax. It does not strip a template row
+		# that is already included in the item price: the POS shows that
+		# price as the amount due.
 		if tax_inclusive and not tax.included_in_print_rate:
 			tax.included_in_print_rate = 1
-			has_changes = True
-		elif not tax_inclusive and tax.included_in_print_rate:
-			tax.included_in_print_rate = 0
 			has_changes = True
 
 	# Recalculate if we made changes

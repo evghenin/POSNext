@@ -118,17 +118,14 @@ export const __ = translate
 
 /**
  * Determines the preferred locale for the current session.
- * Priority: Frappe boot config → localStorage → fallback ("en")
+ * Priority: POS language in localStorage → fallback ("en").
+ * Desk language (frappe.boot.lang / User.language) is not used.
  * @returns Lowercase locale code
  */
 const getLocale = (): string => {
   if (typeof window === "undefined") return FALLBACK_LOCALE
 
-  return (
-    (window as any)?.frappe?.boot?.lang?.toLowerCase() ||
-    window.localStorage?.getItem("pos_next_language")?.toLowerCase() ||
-    FALLBACK_LOCALE
-  )
+  return window.localStorage?.getItem("pos_next_language")?.toLowerCase() || FALLBACK_LOCALE
 }
 
 /**
@@ -160,8 +157,10 @@ function applyMessages(messages: Messages) {
  * Fetches translations from Frappe API.
  * @returns Translation dictionary or null on failure
  */
-async function requestTranslations() {
-  const messages = await call("pos_next.api.localization.get_app_translations", {})
+async function requestTranslations(locale?: string) {
+  const messages = await call("pos_next.api.localization.get_app_translations", {
+    locale: locale || getLocale(),
+  })
   return (messages as Messages) || null
 }
 
@@ -170,7 +169,7 @@ async function requestTranslations() {
  *
  * Flow:
  * 1. If preferCache: apply cached translations immediately (fast initial render)
- * 2. If cache is stale or forceNetwork: fetch fresh from API
+ * 2. Always fetch fresh translations from the API
  * 3. Update cache and re-apply if new translations received
  *
  * @param locale - Target locale code
@@ -178,7 +177,7 @@ async function requestTranslations() {
  * @returns True if translations were successfully applied
  */
 async function loadLocale(locale: string, options: LoadOptions = {}) {
-  const { preferCache = false, forceNetwork = false } = options
+  const { preferCache = false } = options
   const target = locale || FALLBACK_LOCALE
   let appliedFromCache = false
 
@@ -187,15 +186,11 @@ async function loadLocale(locale: string, options: LoadOptions = {}) {
     if (cached?.messages) {
       applyMessages(cached.messages)
       appliedFromCache = true
-
-      if (!translationCache.isStale(cached.timestamp) && !forceNetwork) {
-        return true
-      }
     }
   }
 
-  const entry = await translationCache.getFresh(target, () => requestTranslations(), {
-    force: forceNetwork,
+  const entry = await translationCache.getFresh(target, () => requestTranslations(target), {
+    force: true,
   })
 
   if (entry?.messages) {
@@ -215,7 +210,8 @@ function fallbackFetch(locale?: string) {
   createResource({
     url: "pos_next.api.localization.get_app_translations",
     method: "GET",
-    cache: "translations",
+    params: { locale: locale || getLocale() },
+    cache: `translations:${locale || getLocale()}`,
     auto: true,
     transform: (messages: Messages) => applyMessages(messages),
     onError: () => log.warn(`Failed to load translations for ${locale || FALLBACK_LOCALE}`),

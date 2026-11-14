@@ -56,7 +56,7 @@
 							</div>
 							<div class="flex items-center gap-1">
 								<button
-									v-if="props.allowPrintDraftInvoices"
+									v-if="props.allowPrintDraftInvoices && shiftStore.allowPosPrint"
 									@click.stop="handlePrintDraft(draft)"
 									class="text-gray-400 hover:text-blue-600 transition-colors p-1"
 									:title="__('Print draft')"
@@ -261,7 +261,7 @@ async function loadDrafts() {
 }
 
 function handlePrintDraft(draft) {
-	if (!props.allowPrintDraftInvoices) {
+	if (!props.allowPrintDraftInvoices || !shiftStore.allowPosPrint) {
 		return;
 	}
 

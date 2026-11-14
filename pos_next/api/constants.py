@@ -18,6 +18,7 @@ POS_SETTINGS_FIELDS = [
 	"name",
 	"enabled",
 	"tax_inclusive",
+	"display_gross_amounts",
 	"allow_user_to_edit_additional_discount",
 	"allow_user_to_edit_item_discount",
 	"allow_user_to_edit_rate",
@@ -53,6 +54,7 @@ POS_SETTINGS_FIELDS = [
 DEFAULT_POS_SETTINGS = {
 	"enabled": 0,
 	"tax_inclusive": 0,
+	"display_gross_amounts": 0,
 	"allow_user_to_edit_additional_discount": 0,
 	"allow_user_to_edit_item_discount": 1,
 	"allow_user_to_edit_rate": 0,

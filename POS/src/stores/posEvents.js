@@ -252,6 +252,7 @@ export const usePOSEventsStore = defineStore("posEvents", () => {
 			"allow_user_to_edit_rate",
 			"disable_rounded_total",
 			"tax_inclusive",
+			"display_gross_amounts",
 		];
 		const pricingChanges = pricingFields.filter((field) => field in changes);
 		if (pricingChanges.length > 0) {
