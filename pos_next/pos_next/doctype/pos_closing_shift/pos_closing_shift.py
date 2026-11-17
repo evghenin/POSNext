@@ -700,6 +700,7 @@ def make_closing_shift_from_opening(opening_shift):
 			"expenses_count": len(pos_expenses_table),
 			"deposits_total": deposits_total,
 			"collections_total": collections_total,
+			"cash_mode": cash_mode,
 			"pos_expenses": pos_expenses_table,
 			"pos_transactions": pos_transactions,  # Include return info for display
 		}

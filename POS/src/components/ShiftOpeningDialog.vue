@@ -88,9 +88,9 @@
 							></div>
 						</div>
 
-						<div v-else-if="paymentMethods.length > 0" class="flex flex-col gap-3">
+						<div v-else-if="cashPaymentMethods.length > 0" class="flex flex-col gap-3">
 							<div
-								v-for="method in paymentMethods"
+								v-for="method in cashPaymentMethods"
 								:key="method.name"
 								class="flex items-center gap-3 p-3 border rounded-lg"
 							>
@@ -301,6 +301,14 @@ const paymentMethods = computed(() => {
 	);
 });
 
+const cashMode = computed(
+	() => selectedProfile.value?.posa_cash_mode_of_payment || "Cash"
+);
+
+const cashPaymentMethods = computed(() =>
+	paymentMethods.value.filter((method) => method.mode_of_payment === cashMode.value)
+);
+
 // Watch dialog open state
 // Use { immediate: true } to ensure initDialog runs even when
 // the component mounts with open already true (e.g., after logout with dialog open)
@@ -373,7 +381,10 @@ async function openShift() {
 	// Prepare balance details
 	const balance_details = paymentMethods.value.map((method) => ({
 		mode_of_payment: method.mode_of_payment,
-		opening_amount: Number.parseFloat(openingBalances.value[method.mode_of_payment] || 0),
+		opening_amount:
+			method.mode_of_payment === cashMode.value
+				? Number.parseFloat(openingBalances.value[method.mode_of_payment] || 0)
+				: 0,
 	}));
 
 	try {

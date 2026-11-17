@@ -670,7 +670,7 @@
 							<!-- ENTRY MODE: Simple blind input list (when hideExpectedAmount is enabled and not showing report) -->
 							<div v-if="isInEntryMode" class="flex flex-col gap-3 md:gap-4">
 								<div
-									v-for="(payment, idx) in closingData.payment_reconciliation"
+									v-for="(payment, idx) in visiblePayments"
 									:key="idx"
 									class="border border-gray-200 rounded-lg p-3 md:p-4 bg-white hover:border-gray-300 transition-colors"
 								>
@@ -723,7 +723,7 @@
 							<!-- REVIEW MODE: Full payment method cards (when not in entry mode) -->
 							<div v-else class="flex flex-col gap-4 md:gap-5">
 								<div
-									v-for="(payment, idx) in closingData.payment_reconciliation"
+									v-for="(payment, idx) in visiblePayments"
 									:key="idx"
 									:class="[
 										'border rounded-lg p-3 md:p-5 transition-all',
@@ -1294,14 +1294,17 @@ async function loadClosingData() {
 
 		// Make payment_reconciliation reactive
 		if (data.payment_reconciliation) {
-			data.payment_reconciliation = data.payment_reconciliation.map((payment) =>
-				reactive({
+			const cashMode = data.cash_mode || "Cash";
+			data.payment_reconciliation = data.payment_reconciliation.map((payment) => {
+				const isCash = payment.mode_of_payment === cashMode;
+				const expected = Number.parseFloat(payment.expected_amount) || 0;
+				return reactive({
 					...payment,
-					closing_amount: payment.closing_amount ?? 0,
+					closing_amount: isCash ? (payment.closing_amount ?? 0) : expected,
 					difference: 0,
 					_touched: true,
-				})
-			);
+				});
+			});
 
 			// Calculate initial differences
 			data.payment_reconciliation.forEach((payment) => {
@@ -1514,17 +1517,24 @@ const outstandingTotal = computed(() => {
 	if (!closingData.value) return 0;
 	return Number(closingData.value.outstanding_total ?? sumTransactions("outstanding_amount"));
 });
+const visiblePayments = computed(() => {
+	const rows = closingData.value?.payment_reconciliation || [];
+	const cashMode = closingData.value?.cash_mode || "Cash";
+	const cash = rows.filter((payment) => payment.mode_of_payment === cashMode);
+	return cash.length ? cash : rows;
+});
+
 const getTotalExpected = computed(() => {
-	if (!closingData.value || !closingData.value.payment_reconciliation) return 0;
-	return closingData.value.payment_reconciliation.reduce(
+	if (!visiblePayments.value.length) return 0;
+	return visiblePayments.value.reduce(
 		(sum, payment) => sum + Number.parseFloat(payment.expected_amount || 0),
 		0
 	);
 });
 
 const getTotalActual = computed(() => {
-	if (!closingData.value || !closingData.value.payment_reconciliation) return 0;
-	return closingData.value.payment_reconciliation.reduce(
+	if (!visiblePayments.value.length) return 0;
+	return visiblePayments.value.reduce(
 		(sum, payment) => sum + Number.parseFloat(payment.closing_amount || 0),
 		0
 	);
