@@ -446,7 +446,7 @@
 														</div>
 													</div>
 												</div>
-												<!-- Compact warning when discount editing disabled due to pricing rules -->
+												<!-- Compact warning when discount editing disabled due to promo/coupon -->
 												<p
 													v-if="hasPricingRules"
 													class="mt-2 text-xs text-amber-600 flex items-center gap-1"
@@ -455,7 +455,11 @@
 														name="lock"
 														class="w-3 h-3"
 													/>
-													{{ __("Locked (promotional offer)") }}
+													{{
+														isCouponLocked
+															? __("Locked (coupon applied)")
+															: __("Locked (promotional offer)")
+													}}
 												</p>
 											</div>
 
@@ -547,6 +551,7 @@
 
 <script setup>
 import { promoApi } from "@/utils/promoApi";
+import { isCouponLine } from "@/utils/couponLines";
 import { useToast } from "@/composables/useToast";
 import { usePOSSettingsStore } from "@/stores/posSettings";
 import { usePOSOffersStore } from "@/stores/posOffers";
@@ -663,6 +668,31 @@ const originalPriceListRate = ref(0); // Original price_list_rate when dialog op
 const itemHasActivePromotion = ref(false);
 let promotionCheckRequestId = 0;
 
+function itemAffectedByCoupon(item) {
+	if (!item || item.is_free_item) return false;
+	// Line-level coupons stamp discount_source=coupon on eligible lines.
+	if (isCouponLine(item)) return true;
+	const coupon = cartStore.appliedCoupon;
+	if (!coupon) return false;
+	// Line-level coupon only locks tagged lines (handled above).
+	if (coupon.line_level) return false;
+	// Cart-level coupon uses paid lines as its base — lock item discount on all of them.
+	return true;
+}
+
+function itemHasAppliedPromo(item) {
+	if (!item) return false;
+	if (item.is_free_item) return true;
+	if (itemAffectedByCoupon(item)) return true;
+	const rules = item.pricing_rules;
+	if (Array.isArray(rules) && rules.length > 0) return true;
+	if (typeof rules === "string" && rules.trim()) return true;
+	const source = item.discount_source || "";
+	return Boolean(source && source !== "coupon");
+}
+
+const isCouponLocked = computed(() => itemAffectedByCoupon(localItem.value));
+
 async function checkItemPromotion(itemCode, qty) {
 	const requestId = ++promotionCheckRequestId;
 	itemHasActivePromotion.value = false;
@@ -679,6 +709,7 @@ async function checkItemPromotion(itemCode, qty) {
 			company: company || undefined,
 			qty: quantity,
 			customer: cartCustomer || undefined,
+			uom: localUom.value || localItem.value?.uom || undefined,
 		});
 		if (requestId !== promotionCheckRequestId) return;
 		const result = resp?.message ?? resp;
@@ -713,7 +744,9 @@ const isLockedFreeItem = computed(() => Boolean(localItem.value?.is_free_item));
 
 const hasPricingRules = computed(() => {
 	if (!localItem.value) return false;
-	if (localItem.value.is_free_item) return true;
+	// Already-applied promo/coupon on the line — lock even if the async
+	// item_has_active_promotion check is still pending or returns false.
+	if (itemHasAppliedPromo(localItem.value)) return true;
 	if (itemHasActivePromotion.value) return true;
 	return isItemCoveredByOffer(
 		localItem.value,
@@ -747,6 +780,9 @@ const rateEditDisabledReason = computed(() => {
 	if (!settingsStore.allowUserToEditRate) {
 		return __("Rate editing is disabled");
 	}
+	if (isCouponLocked.value) {
+		return __("Locked (coupon applied)");
+	}
 	if (hasPricingRules.value) {
 		return __("Locked (promotional offer)");
 	}
@@ -754,6 +790,9 @@ const rateEditDisabledReason = computed(() => {
 });
 
 const discountEditDisabledReason = computed(() => {
+	if (isCouponLocked.value) {
+		return __("Cannot edit item discount while a coupon applies to this item");
+	}
 	if (hasPricingRules.value) {
 		return __("Cannot add item discount while a promotional offer applies to this item");
 	}
@@ -886,10 +925,15 @@ watch(localUom, (newUom, oldUom) => {
 	handleUomChange(newUom);
 });
 
-// Re-evaluate promo lock when qty changes (e.g. 1 → editable, 2–5 → locked)
+// Re-evaluate promo lock when qty / UOM changes (e.g. 1 → editable, 2–5 → locked)
 watch(localQuantity, (newQty) => {
 	if (isInitializingItem.value || !localItem.value?.item_code) return;
 	checkItemPromotion(localItem.value.item_code, newQty);
+});
+
+watch(localUom, () => {
+	if (isInitializingItem.value || !localItem.value?.item_code) return;
+	checkItemPromotion(localItem.value.item_code, localQuantity.value);
 });
 
 // Re-evaluate when cart customer changes (Customer / Customer Group rules)
@@ -1211,7 +1255,7 @@ function updateItem() {
 	let discountAmount = discountType.value === "amount" ? discountValue.value : 0;
 
 	if (hasPricingRules.value) {
-		// Keep promotional discount values; do not allow manual override
+		// Keep promotional / coupon discount values; do not allow manual override
 		discountPercentage = Number(localItem.value.discount_percentage) || 0;
 		discountAmount = Number(localItem.value.discount_amount) || 0;
 
@@ -1230,7 +1274,11 @@ function updateItem() {
 
 		if (attemptedPct !== initPct || attemptedAmt !== initAmt) {
 			showError(
-				__("Cannot add item discount while a promotional offer applies to this item")
+				isCouponLocked.value
+					? __("Cannot edit item discount while a coupon applies to this item")
+					: __(
+							"Cannot add item discount while a promotional offer applies to this item"
+						)
 			);
 			return;
 		}
@@ -1238,6 +1286,7 @@ function updateItem() {
 
 	const selectedSp = localSalesPerson.value || null;
 	const selectedSpMeta = salesPersons.value.find((p) => p.name === selectedSp);
+	const preservePromoDiscount = hasPricingRules.value || isItemLevelPromotion.value;
 
 	const updatedItem = {
 		...localItem.value,
@@ -1249,14 +1298,16 @@ function updateItem() {
 		warehouse: localWarehouse.value,
 		discount_percentage: discountPercentage,
 		discount_amount: discountAmount,
-		discount_source:
-			(discountPercentage > 0 || discountAmount > 0) && !isItemLevelPromotion.value
+		discount_source: preservePromoDiscount
+			? localItem.value.discount_source || ""
+			: (discountPercentage > 0 || discountAmount > 0)
 				? "manual_discount"
-				: localItem.value.discount_source || "",
-		is_already_discounted:
-			(discountPercentage > 0 || discountAmount > 0) && !isItemLevelPromotion.value
+				: "",
+		is_already_discounted: preservePromoDiscount
+			? localItem.value.is_already_discounted || 0
+			: (discountPercentage > 0 || discountAmount > 0)
 				? 1
-				: localItem.value.is_already_discounted || 0,
+				: 0,
 		// Track manual rate edits for audit logging
 		is_rate_manually_edited: isRateManuallyEdited ? 1 : 0,
 		original_rate: isRateManuallyEdited ? originalPriceListRate.value : null,

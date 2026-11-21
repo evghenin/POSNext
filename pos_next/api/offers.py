@@ -709,17 +709,26 @@ def get_customer_party_context(customer: str | None = None) -> dict:
 def _party_sql_conditions(customer: str | None) -> tuple[str, dict]:
 	"""SQL fragment mirroring ERPNext ``get_other_conditions`` for cart party fields.
 
-	Rules restricted to Territory / Campaign / Sales Partner are excluded — POS
-	does not supply those args, so only blank values match (same as ERPNext when
-	the args are absent).
+	Campaign / Sales Partner are unused in POS, so only blank values match.
+	Territory matches the customer's territory (or blank), same as ERPNext when
+	the customer doc supplies territory.
 	"""
 	ctx = _resolve_customer_party_context(customer)
 	values: dict = {}
 	parts = [
-		"AND IFNULL(pr.territory, '') = ''",
 		"AND IFNULL(pr.sales_partner, '') = ''",
 		"AND IFNULL(pr.campaign, '') = ''",
 	]
+
+	territory = None
+	if ctx["customer"]:
+		territory = frappe.db.get_value("Customer", ctx["customer"], "territory")
+
+	if territory:
+		parts.append("AND IFNULL(pr.territory, '') IN (%(party_territory)s, '')")
+		values["party_territory"] = territory
+	else:
+		parts.append("AND IFNULL(pr.territory, '') = ''")
 
 	if ctx["customer"]:
 		parts.append("AND IFNULL(pr.customer, '') IN (%(party_customer)s, '')")
@@ -737,13 +746,59 @@ def _party_sql_conditions(customer: str | None) -> tuple[str, dict]:
 	return "\n\t\t\t".join(parts), values
 
 
-def _pricing_rule_affects_item(rule: dict, item_code: str, stock_uom: str | None = None) -> bool:
+def _item_group_ancestors(item_group: str | None) -> list[str]:
+	"""Item groups that match ERPNext ``_get_tree_conditions`` for Pricing Rule Item Group.
+
+	Includes the item's own group, its ancestors, and the root group (e.g. All Item Groups).
+	"""
+	if not item_group:
+		return []
+
+	groups: list[str] = []
+	lft_rgt = frappe.db.get_value("Item Group", item_group, ["lft", "rgt"])
+	if not lft_rgt:
+		return [item_group]
+
+	lft, rgt = lft_rgt
+	ancestors = frappe.get_all(
+		"Item Group",
+		filters={"lft": ["<=", lft], "rgt": [">=", rgt]},
+		pluck="name",
+	)
+	for name in ancestors or []:
+		if name not in groups:
+			groups.append(name)
+
+	root = frappe.db.get_value(
+		"Item Group",
+		{"is_group": 1, "parent_item_group": ("is", "not set")},
+		"name",
+	)
+	if root and root not in groups:
+		groups.append(root)
+
+	if item_group not in groups:
+		groups.append(item_group)
+
+	return groups
+
+
+def _pricing_rule_affects_item(
+	rule: dict,
+	item_code: str,
+	stock_uom: str | None = None,
+	uom: str | None = None,
+	customer: str | None = None,
+	qty: float | int = 1,
+) -> bool:
 	"""Return True when a matched Pricing Rule would actually change the item.
 
 	``Rate from Price List`` rules (advanced-pricing-rules) only apply when the
 	item has an Item Price in the rule's target price list. Matching the item
 	group/brand alone is not enough — otherwise POS locks manual discounts on
 	lines whose rate never changed.
+
+	Lookup mirrors advanced_pricing_rules (cart UOM + customer, then stock UOM).
 	"""
 	if rule.get("rate_or_discount") != RATE_FROM_PRICE_LIST:
 		return True
@@ -754,16 +809,29 @@ def _pricing_rule_affects_item(rule: dict, item_code: str, stock_uom: str | None
 
 	from erpnext.stock.get_item_details import get_price_list_rate_for
 
-	ctx = frappe._dict(
-		{
-			"price_list": price_list,
-			"uom": stock_uom,
-			"stock_uom": stock_uom,
-			"transaction_date": nowdate(),
-			"qty": 1,
-		}
-	)
-	return get_price_list_rate_for(ctx, item_code) is not None
+	customer_name = (customer or "").strip() or None
+	qty_val = flt(qty) or 1
+	uoms_to_try = []
+	for candidate in (uom, stock_uom, None):
+		key = candidate or ""
+		if key not in [c or "" for c in uoms_to_try]:
+			uoms_to_try.append(candidate)
+
+	for try_uom in uoms_to_try:
+		ctx = frappe._dict(
+			{
+				"price_list": price_list,
+				"uom": try_uom,
+				"stock_uom": stock_uom,
+				"transaction_date": nowdate(),
+				"qty": qty_val,
+				"customer": customer_name,
+			}
+		)
+		if get_price_list_rate_for(ctx, item_code) is not None:
+			return True
+
+	return False
 
 
 @frappe.whitelist()
@@ -772,6 +840,7 @@ def item_has_active_promotion(
 	company: str | None = None,
 	qty: float | int | str = 1,
 	customer: str | None = None,
+	uom: str | None = None,
 ) -> dict:
 	"""Whether this quantity of an item has an active selling pricing rule that applies.
 
@@ -781,6 +850,8 @@ def item_has_active_promotion(
 
 	``customer`` is the cart customer: rules limited to another Customer or
 	Customer Group are not treated as applicable.
+
+	Item Group rules match the item's group and its ancestors (same as ERPNext).
 	"""
 	quantity = flt(qty)
 	if not item_code or quantity <= 0:
@@ -797,16 +868,32 @@ def item_has_active_promotion(
 		select_fields += ", pr.custom_rate_from_price_list"
 
 	party_sql, party_values = _party_sql_conditions(customer)
+	item_groups = _item_group_ancestors(item.item_group)
 
 	params = {
 		"item_code": item_code,
-		"item_group": item.item_group,
 		"brand": item.brand,
 		"company": company or "",
 		"date": nowdate(),
 		"qty": quantity,
 		**party_values,
 	}
+
+	group_sql = "AND 1=0"
+	if item_groups:
+		placeholders = []
+		for i, group in enumerate(item_groups):
+			key = f"item_group_{i}"
+			placeholders.append(f"%({key})s")
+			params[key] = group
+		group_sql = f"""
+				OR (
+					pr.apply_on = 'Item Group'
+					AND EXISTS (
+						SELECT 1 FROM `tabPricing Rule Item Group` ig
+						WHERE ig.parent = pr.name AND ig.item_group IN ({', '.join(placeholders)})
+					)
+				)"""
 
 	rules = frappe.db.sql(
 		f"""
@@ -815,6 +902,7 @@ def item_has_active_promotion(
 		WHERE
 			pr.disable = 0
 			AND pr.selling = 1
+			AND IFNULL(pr.coupon_code_based, 0) = 0
 			AND (pr.company IS NULL OR pr.company = '' OR pr.company = %(company)s)
 			AND (pr.valid_from IS NULL OR pr.valid_from <= %(date)s)
 			AND (pr.valid_upto IS NULL OR pr.valid_upto >= %(date)s)
@@ -829,14 +917,7 @@ def item_has_active_promotion(
 						WHERE ic.parent = pr.name AND ic.item_code = %(item_code)s
 					)
 				)
-				OR (
-					pr.apply_on = 'Item Group'
-					AND %(item_group)s IS NOT NULL
-					AND EXISTS (
-						SELECT 1 FROM `tabPricing Rule Item Group` ig
-						WHERE ig.parent = pr.name AND ig.item_group = %(item_group)s
-					)
-				)
+				{group_sql}
 				OR (
 					pr.apply_on = 'Brand'
 					AND IFNULL(%(brand)s, '') != ''
@@ -852,7 +933,14 @@ def item_has_active_promotion(
 	)
 
 	for rule in rules:
-		if _pricing_rule_affects_item(rule, item_code, stock_uom=item.stock_uom):
+		if _pricing_rule_affects_item(
+			rule,
+			item_code,
+			stock_uom=item.stock_uom,
+			uom=uom or item.stock_uom,
+			customer=customer,
+			qty=quantity,
+		):
 			return {"has_promotion": True}
 
 	return {"has_promotion": False}
