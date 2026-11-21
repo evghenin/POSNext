@@ -30,6 +30,7 @@
   "min_amount",
   "max_amount",
   "apply_on",
+  "exclude_discounted_items",
   "uses",
   "valid_from",
   "valid_upto",
@@ -188,6 +189,13 @@
    "label": "Apply Discount On",
    "options": "Grand Total\nNet Total",
    "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "When enabled, the coupon is calculated only on cart lines that do not already have a discount (promotion, manual discount, or free item).",
+   "fieldname": "exclude_discounted_items",
+   "fieldtype": "Check",
+   "label": "Do Not Apply to Discounted Items"
   },
   {
    "fieldname": "uses",

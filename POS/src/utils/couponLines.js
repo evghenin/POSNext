@@ -63,6 +63,62 @@ export function hasFixedCouponDiscount(item) {
 	return isCouponLine(item) && item.coupon_fixed_discount != null;
 }
 
+/** True when the line already carries a non-coupon discount (promo, manual, free). */
+export function isLineAlreadyDiscounted(item) {
+	if (!item || item.is_free_item) return true;
+	const pre = preCouponDiscount(item);
+	if (pre.is_already_discounted) return true;
+	if (Number(pre.discount_percentage) > 0) return true;
+	if (Number(pre.discount_amount) > 0) return true;
+	const rules = item.pricing_rules;
+	if (Array.isArray(rules) && rules.length > 0) return true;
+	if (typeof rules === "string" && rules.trim()) return true;
+	return Boolean(pre.discount_source);
+}
+
+/**
+ * Subtotal of lines a cart-level coupon may use as its percentage/amount base.
+ * Free items are always skipped; discounted lines are skipped when excludeDiscounted.
+ */
+export function eligibleCouponSubtotal(items, { excludeDiscounted = false } = {}) {
+	if (!Array.isArray(items) || items.length === 0) return 0;
+	let total = 0;
+	for (const item of items) {
+		if (item?.is_free_item) continue;
+		if (excludeDiscounted && isLineAlreadyDiscounted(item)) continue;
+		const unit = Number(item.price_list_rate || item.rate) || 0;
+		const qty = Number(item.quantity) || 0;
+		total += unit * qty;
+	}
+	return total;
+}
+
+/**
+ * Compute cart-level coupon discount from coupon config and a base amount.
+ * Mirrors CouponDialog / apply_coupon_discount clamping rules.
+ */
+export function calculateCartCouponDiscount(coupon, baseAmount) {
+	const base = Math.max(Number(baseAmount) || 0, 0);
+	const minAmount = Number(coupon?.min_amount) || 0;
+	if (minAmount > 0 && base < minAmount) {
+		return { valid: false, discount: 0, reason: "min_amount" };
+	}
+
+	let discount = 0;
+	if (coupon?.discount_type === "Percentage") {
+		discount = (base * (Number(coupon.discount_percentage) || 0)) / 100;
+	} else {
+		discount = Number(coupon?.discount_amount) || 0;
+	}
+
+	const maxAmount = Number(coupon?.max_amount) || 0;
+	if (maxAmount > 0 && discount > maxAmount) discount = maxAmount;
+	if (discount > base) discount = base;
+	if (discount < 0) discount = 0;
+
+	return { valid: true, discount, base };
+}
+
 /**
  * Largest discount a fixed coupon line may carry at its current quantity:
  * never more than the server allocated, the line itself, or the coupon's

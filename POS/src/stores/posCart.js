@@ -7,6 +7,8 @@ import {
 import { useInvoice } from "@/composables/useInvoice";
 import {
 	COUPON_DISCOUNT_SOURCE,
+	calculateCartCouponDiscount,
+	eligibleCouponSubtotal,
 	fixedCouponLineDiscount,
 	hasFixedCouponDiscount,
 	isCouponLine,
@@ -583,8 +585,66 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		if (couponRevalidateTimer) clearTimeout(couponRevalidateTimer);
 		couponRevalidateTimer = setTimeout(() => {
 			couponRevalidateTimer = null;
-			revalidateLineCoupon();
+			if (isLineLevelCoupon(appliedCoupon.value)) {
+				revalidateLineCoupon();
+			} else {
+				recalculateCartLevelCoupon();
+			}
 		}, 400);
+	}
+
+	/**
+	 * Recalculate an invoice-level (additional discount) coupon after the cart changes.
+	 * Honours exclude_discounted_items by basing the amount only on undiscounted lines.
+	 */
+	function recalculateCartLevelCoupon() {
+		const applied = appliedCoupon.value;
+		if (!applied || isLineLevelCoupon(applied)) return;
+
+		const coupon = applied.coupon;
+		if (!coupon) return;
+
+		const exclude = Boolean(coupon.exclude_discounted_items);
+		let baseAmount;
+		if (exclude) {
+			baseAmount = eligibleCouponSubtotal(invoiceItems.value, { excludeDiscounted: true });
+		} else {
+			// Totals already include additionalDiscount — restore the pre-coupon base.
+			const addDisc = Number(additionalDiscount.value) || 0;
+			const grandBeforeCoupon = (Number(grandTotal.value) || 0) + addDisc;
+			const tax = Number(totalTax.value) || 0;
+			const netBeforeCoupon = Math.max(grandBeforeCoupon - tax, 0);
+			baseAmount = coupon.apply_on === "Grand Total" ? grandBeforeCoupon : netBeforeCoupon;
+		}
+
+		const priced = calculateCartCouponDiscount(coupon, baseAmount);
+		if (!priced.valid || (exclude && baseAmount <= 0)) {
+			removeDiscount();
+			couponCode.value = null;
+			appliedCoupon.value = null;
+			showWarning(
+				__("Coupon {0} removed: {1}", [
+					applied.code || coupon.coupon_code,
+					exclude && baseAmount <= 0
+						? __("No eligible items without a discount")
+						: __("Cart no longer meets requirements"),
+				])
+			);
+			return;
+		}
+
+		applyDiscount({
+			...applied,
+			amount: priced.discount,
+			percentage: coupon.discount_type === "Percentage" ? coupon.discount_percentage : 0,
+			base_amount: baseAmount,
+		});
+		appliedCoupon.value = {
+			...applied,
+			amount: priced.discount,
+			base_amount: baseAmount,
+			exclude_discounted_items: exclude,
+		};
 	}
 
 	async function revalidateLineCoupon() {
@@ -2365,23 +2425,25 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		{ immediate: true, flush: "post" }
 	);
 
-	// Re-check a scoped coupon when the paid lines (qty, UOM, price, manual rate) or the customer change.
+	// Re-check / re-price an applied coupon when paid lines or the customer change.
 	watch(
 		() =>
-			isLineLevelCoupon(appliedCoupon.value)
+			appliedCoupon.value
 				? `${invoiceItems.value
 						.filter((item) => !item.is_free_item)
 						.map(
 							(item) =>
 								`${item.item_code}:${item.quantity}:${item.uom || ""}:${item.price_list_rate || 0}:${
 									item.is_rate_manually_edited ? item.rate : ""
-								}`
+								}:${item.discount_percentage || 0}:${item.discount_amount || 0}:${item.discount_source || ""}`
 						)
 						.join(",")}::${customer.value?.name || customer.value || ""}`
 				: null,
 		(key, oldKey) => {
 			if (!key || !oldKey || key === oldKey) return;
-			capFixedCouponLines();
+			if (isLineLevelCoupon(appliedCoupon.value)) {
+				capFixedCouponLines();
+			}
 			scheduleCouponRevalidation();
 		}
 	);

@@ -5,7 +5,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, getdate, strip, today
+from frappe.utils import cint, flt, getdate, strip, today
 
 ONE_USE_COUPON_DOCTYPES = ("Sales Invoice", "POS Invoice")
 
@@ -137,12 +137,49 @@ def _get_customer_coupon_usage_count(customer, coupon_code):
 	return used_count
 
 
-def apply_coupon_discount(coupon, cart_total, net_total=None):
-	"""Calculate discount amount based on coupon configuration"""
-	from frappe.utils import flt
+def _line_is_already_discounted(item: dict) -> bool:
+	"""True when a cart line already has a non-coupon discount."""
+	if not item or cint(item.get("is_free_item")):
+		return True
+	if cint(item.get("is_already_discounted")):
+		return True
+	if flt(item.get("discount_percentage")) > 0 or flt(item.get("discount_amount")) > 0:
+		return True
+	pricing_rules = item.get("pricing_rules") or ""
+	if isinstance(pricing_rules, (list, tuple)):
+		if any(pricing_rules):
+			return True
+	elif str(pricing_rules).strip():
+		return True
+	source = (item.get("discount_source") or "").strip()
+	return bool(source) and source != "coupon"
 
-	# Determine the base amount for discount calculation
-	base_amount = cart_total if coupon.apply_on == "Grand Total" else (net_total or cart_total)
+
+def eligible_coupon_base(items, exclude_discounted_items=False) -> float:
+	"""Sum of price_list_rate × qty for lines the coupon may discount."""
+	total = 0.0
+	for item in items or []:
+		if cint(item.get("is_free_item")):
+			continue
+		if exclude_discounted_items and _line_is_already_discounted(item):
+			continue
+		unit = flt(item.get("price_list_rate") or item.get("rate") or 0)
+		qty = flt(item.get("qty") or item.get("quantity") or 0)
+		total += unit * qty
+	return total
+
+
+def apply_coupon_discount(coupon, cart_total, net_total=None, items=None):
+	"""Calculate discount amount based on coupon configuration.
+
+	When ``exclude_discounted_items`` is set and ``items`` are provided, the
+	percentage/amount base is only the lines without an existing discount.
+	"""
+	exclude = cint(getattr(coupon, "exclude_discounted_items", 0))
+	if exclude and items is not None:
+		base_amount = eligible_coupon_base(items, exclude_discounted_items=True)
+	else:
+		base_amount = cart_total if coupon.apply_on == "Grand Total" else (net_total or cart_total)
 
 	# Check minimum amount
 	if coupon.min_amount and flt(base_amount) < flt(coupon.min_amount):
@@ -175,6 +212,8 @@ def apply_coupon_discount(coupon, cart_total, net_total=None):
 		"discount_type": coupon.discount_type,
 		"discount_percentage": coupon.discount_percentage if coupon.discount_type == "Percentage" else None,
 		"apply_on": coupon.apply_on,
+		"exclude_discounted_items": exclude,
+		"base_amount": flt(base_amount),
 	}
 
 

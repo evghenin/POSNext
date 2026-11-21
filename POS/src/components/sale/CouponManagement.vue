@@ -480,6 +480,27 @@
 										:min="0"
 									/>
 								</div>
+								<div class="mt-4">
+									<label class="flex items-start gap-2">
+										<input
+											type="checkbox"
+											v-model="form.exclude_discounted_items"
+											:true-value="1"
+											:false-value="0"
+											class="rounded border-gray-300 mt-0.5"
+										/>
+										<span>
+											<span class="text-sm text-gray-700 block">{{
+												__("Do Not Apply to Discounted Items")
+											}}</span>
+											<span class="text-xs text-gray-500 block mt-0.5">{{
+												__(
+													"Coupon is calculated only on items without an existing promotion or manual discount"
+												)
+											}}</span>
+										</span>
+									</label>
+								</div>
 								<div
 									v-if="!isCreating && couponDetails.discount_type"
 									class="mt-4 p-3 bg-purple-50 rounded-lg"
@@ -895,6 +916,7 @@ const form = ref({
 	min_amount: null,
 	max_amount: null,
 	apply_on: "Grand Total",
+	exclude_discounted_items: 0,
 	customer: "",
 	campaign: "",
 	valid_from: "",
@@ -1118,6 +1140,7 @@ const updateCouponResource = createResource({
 				min_amount: form.value.min_amount,
 				max_amount: form.value.max_amount,
 				apply_on: form.value.apply_on,
+				exclude_discounted_items: form.value.exclude_discounted_items,
 				valid_from: form.value.valid_from,
 				valid_upto: form.value.valid_upto,
 				maximum_use: form.value.maximum_use,
@@ -1381,6 +1404,7 @@ function resetForm() {
 		min_amount: null,
 		max_amount: null,
 		apply_on: "Grand Total",
+		exclude_discounted_items: 0,
 		customer: "",
 		campaign: "",
 		valid_from: "",
@@ -1403,6 +1427,7 @@ function populateFormFromCoupon(coupon) {
 		min_amount: coupon.min_amount || null,
 		max_amount: coupon.max_amount || null,
 		apply_on: coupon.apply_on || __("Grand Total"),
+		exclude_discounted_items: coupon.exclude_discounted_items ? 1 : 0,
 		customer: coupon.customer || "",
 		campaign: coupon.campaign || "",
 		valid_from: coupon.valid_from || "",

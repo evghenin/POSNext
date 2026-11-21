@@ -233,16 +233,17 @@
 <script setup>
 import { isPromotionsAppInstalled, promoApi } from "@/utils/promoApi";
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency";
+import {
+	calculateCartCouponDiscount,
+	eligibleCouponSubtotal,
+} from "@/utils/couponLines";
 import { Button, Dialog, Input, call, createResource } from "frappe-ui";
 import { ref, watch } from "vue";
-import { useInvoice } from "@/composables/useInvoice";
 import { useToast } from "@/composables/useToast";
 import { usePOSCartStore } from "@/stores/posCart";
 
 const cartStore = usePOSCartStore();
 
-// Get calculateDiscountAmount helper from composable
-const { calculateDiscountAmount } = useInvoice();
 const { showSuccess, showError, showWarning } = useToast();
 
 const props = defineProps({
@@ -351,6 +352,10 @@ function applyGiftCard(card) {
 }
 
 function getCouponBaseAmount(coupon) {
+	if (coupon.exclude_discounted_items) {
+		return eligibleCouponSubtotal(props.items || [], { excludeDiscounted: true });
+	}
+
 	const grandTotal = Number.parseFloat(props.grandTotal || 0);
 	const taxAmount = Number.parseFloat(props.taxAmount || 0);
 	const netTotal = Math.max(grandTotal - taxAmount, 0);
@@ -392,42 +397,34 @@ async function applyCoupon() {
 			return;
 		}
 		const baseAmount = getCouponBaseAmount(coupon);
+		const priced = calculateCartCouponDiscount(coupon, baseAmount);
 
-		// Check minimum amount on the configured coupon base
-		if (coupon.min_amount && baseAmount < coupon.min_amount) {
-			errorMessage.value = __("This coupon requires a minimum purchase of ", [
+		if (!priced.valid) {
+			errorMessage.value = __("This coupon requires a minimum purchase of {0}", [
 				formatCurrency(coupon.min_amount),
 			]);
 			showWarning(errorMessage.value);
 			return;
 		}
 
-		// Calculate discount on subtotal (before tax) using centralized helper
-		// Transform server coupon format to discount object format
-		const discountObj = {
-			percentage: coupon.discount_type === "Percentage" ? coupon.discount_percentage : 0,
-			amount: coupon.discount_type === "Amount" ? coupon.discount_amount : 0,
-		};
-
-		let discountAmount = calculateDiscountAmount(discountObj, baseAmount);
-
-		// Apply maximum discount limit if specified
-		if (coupon.max_amount && discountAmount > coupon.max_amount) {
-			discountAmount = coupon.max_amount;
+		if (coupon.exclude_discounted_items && baseAmount <= 0) {
+			errorMessage.value = __(
+				"No eligible items for this coupon. It does not apply to discounted items."
+			);
+			showWarning(errorMessage.value);
+			return;
 		}
-
-		// Clamp discount to the selected coupon base to prevent negative totals
-		discountAmount = Math.min(discountAmount, baseAmount);
 
 		appliedDiscount.value = {
 			name: coupon.coupon_name || coupon.coupon_code,
 			code: couponCode.value.toUpperCase(),
 			percentage: coupon.discount_type === "Percentage" ? coupon.discount_percentage : 0,
-			amount: discountAmount,
+			amount: priced.discount,
 			type: coupon.discount_type,
 			coupon: coupon,
 			apply_on: coupon.apply_on,
 			base_amount: baseAmount,
+			exclude_discounted_items: Boolean(coupon.exclude_discounted_items),
 		};
 
 		emit("discount-applied", appliedDiscount.value);

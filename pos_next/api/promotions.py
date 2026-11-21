@@ -720,6 +720,7 @@ def create_coupon(data):
 				"min_amount": flt(data.get("min_amount")) if data.get("min_amount") else None,
 				"max_amount": flt(data.get("max_amount")) if data.get("max_amount") else None,
 				"apply_on": data.get("apply_on", "Grand Total"),
+				"exclude_discounted_items": cint(data.get("exclude_discounted_items", 0)),
 				"company": data.get("company"),
 				"customer": data.get("customer"),
 				"valid_from": data.get("valid_from"),
@@ -779,6 +780,8 @@ def update_coupon(coupon_name, data):
 			coupon.max_amount = flt(data["max_amount"]) if data["max_amount"] else None
 		if "apply_on" in data:
 			coupon.apply_on = data["apply_on"]
+		if "exclude_discounted_items" in data:
+			coupon.exclude_discounted_items = cint(data["exclude_discounted_items"])
 
 		# Update validity and usage fields
 		if "valid_from" in data:

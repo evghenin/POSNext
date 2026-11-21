@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+	calculateCartCouponDiscount,
+	eligibleCouponSubtotal,
 	fixedCouponLineDiscount,
 	hasFixedCouponDiscount,
 	isCouponLine,
+	isLineAlreadyDiscounted,
 	preCouponDiscount,
 	preCouponLineDiscount,
 	restorePreCouponDiscount,
@@ -95,5 +98,33 @@ describe("couponLines", () => {
 	it("shows a line that is not a coupon line as it is", () => {
 		const item = { discount_percentage: 5, discount_amount: 0, discount_source: "manual_discount" };
 		expect(preCouponDiscount(item)).toMatchObject({ discount_percentage: 5, discount_source: "manual_discount" });
+	});
+
+	it("detects already-discounted lines without treating a pure coupon line as one", () => {
+		expect(isLineAlreadyDiscounted({ discount_percentage: 10, discount_source: "manual_discount" })).toBe(
+			true
+		);
+		expect(isLineAlreadyDiscounted({ is_free_item: 1 })).toBe(true);
+		expect(isLineAlreadyDiscounted(line({ discount_percentage: 10 }))).toBe(false);
+		expect(isLineAlreadyDiscounted({ price_list_rate: 50, quantity: 1 })).toBe(false);
+	});
+
+	it("builds an eligible coupon subtotal that can skip discounted lines", () => {
+		const items = [
+			{ item_code: "A", price_list_rate: 100, quantity: 2 },
+			{ item_code: "B", price_list_rate: 50, quantity: 1, discount_percentage: 10, discount_source: "manual_discount" },
+			{ item_code: "C", price_list_rate: 20, quantity: 1, is_free_item: 1 },
+		];
+		expect(eligibleCouponSubtotal(items)).toBe(250);
+		expect(eligibleCouponSubtotal(items, { excludeDiscounted: true })).toBe(200);
+	});
+
+	it("calculates cart coupon discount with min/max clamps", () => {
+		const pct = { discount_type: "Percentage", discount_percentage: 10, max_amount: 15, min_amount: 50 };
+		expect(calculateCartCouponDiscount(pct, 40)).toMatchObject({ valid: false, discount: 0 });
+		expect(calculateCartCouponDiscount(pct, 200)).toMatchObject({ valid: true, discount: 15 });
+
+		const amt = { discount_type: "Amount", discount_amount: 30 };
+		expect(calculateCartCouponDiscount(amt, 20)).toMatchObject({ valid: true, discount: 20 });
 	});
 });

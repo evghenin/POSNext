@@ -548,8 +548,12 @@ export function useInvoice() {
 		const baseAmount =
 			typeof discount.base_amount === "number" ? discount.base_amount : subtotal.value;
 
-		// Use centralized calculation to handle percentage/amount and clamping
-		let discountAmount = calculateDiscountAmount(discount, baseAmount);
+		// Prefer a pre-computed amount (CouponDialog / recalculate already applied
+		// max_amount and exclude_discounted_items). Fall back to percentage math.
+		let discountAmount =
+			typeof discount.amount === "number" && discount.amount > 0
+				? roundCurrency(discount.amount)
+				: calculateDiscountAmount(discount, baseAmount);
 
 		// Clamp discount to the same base the coupon was calculated against
 		if (discountAmount > baseAmount) {
