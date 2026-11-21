@@ -903,15 +903,10 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				item.free_qty = Number.parseFloat(serverItem.free_qty) || 0;
 				item.gwp_free_qty = Number.parseFloat(serverItem.gwp_free_qty) || 0;
 				hasDiscounts = discountPct > 0 || discountAmt > 0;
-			} else if (!item.is_free_item && hasPricingRules(item.pricing_rules)) {
+			} else if (!item.is_free_item && clearPromotionDiscount(item)) {
 				// The server is the authority for promotion discounts. A line whose
-				// promotion (pricing_rules) the server no longer applies must drop it,
-				// otherwise the client keeps a stale % and computes min_amt on a
-				// different total than the server just used (offers-loop fix).
-				item.discount_percentage = 0;
-				item.discount_amount = 0;
-				item.pricing_rules = [];
-				item.is_already_discounted = 0;
+				// promotion the server no longer applies must drop it, otherwise the
+				// client keeps a stale % (offers-loop fix / customer-party switch).
 			}
 			// Otherwise preserve existing manual discount
 
@@ -926,6 +921,39 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 		rebuildIncrementalCache();
 		return hasDiscounts;
+	}
+
+	/**
+	 * Strip promotional line discounts (pricing-rule / scheme). Leaves manual
+	 * discounts and coupon lines alone. Returns true when something was cleared.
+	 */
+	function clearPromotionDiscount(item) {
+		if (!item || item.is_free_item) return false;
+		if (isCouponLine(item)) {
+			dropPromotionUnderCoupon(item);
+			return true;
+		}
+		const hadPromo =
+			hasPricingRules(item.pricing_rules) ||
+			(item.discount_source && item.discount_source !== COUPON_DISCOUNT_SOURCE);
+		if (!hadPromo) return false;
+		item.discount_percentage = 0;
+		item.discount_amount = 0;
+		item.pricing_rules = [];
+		item.discount_source = "";
+		item.is_already_discounted = 0;
+		item.is_accumulative_discount = 0;
+		return true;
+	}
+
+	function clearAllPromotionDiscounts() {
+		invoiceItems.value.forEach((item) => {
+			if (clearPromotionDiscount(item)) {
+				recalculateItem(item);
+			}
+		});
+		applyHeaderDiscountFromServer(null);
+		rebuildIncrementalCache();
 	}
 
 	/**
@@ -1166,7 +1194,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 			appliedOffers.value = [];
 			processFreeItems([]); // Remove all free items
-			removeDiscount();
+			clearAllPromotionDiscounts();
 			await nextTick();
 			showSuccess(__("Offer has been removed from cart"));
 			offersDialogRef?.resetApplyingState();
@@ -1182,7 +1210,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 			appliedOffers.value = [];
 			processFreeItems([]); // Remove all free items
-			removeDiscount();
+			clearAllPromotionDiscounts();
 			await nextTick();
 			showSuccess(__("Offer has been removed from cart"));
 			offersDialogRef?.resetApplyingState();
@@ -1302,20 +1330,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 					// All offers invalid - clear everything
 					appliedOffers.value = [];
 					processFreeItems([]);
-
-					// Reset all item rates to original (remove discounts)
-					invoiceItems.value.forEach((item) => {
-						if (dropPromotionUnderCoupon(item)) return;
-						if (item.pricing_rules && item.pricing_rules.length > 0) {
-							item.discount_percentage = 0;
-							item.discount_amount = 0;
-							item.pricing_rules = [];
-							item.is_already_discounted = 0;
-							item.is_accumulative_discount = 0;
-							recalculateItem(item);
-						}
-					});
-					rebuildIncrementalCache();
+					clearAllPromotionDiscounts();
 				} else {
 					// Reapply only valid offers
 					const invoiceData = buildOfferEvaluationPayload(currentProfile);
@@ -2247,20 +2262,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			if (combinedCodes.length === 0 && invalidOffers.length > 0) {
 				appliedOffers.value = [];
 				processFreeItems([]);
-				invoiceItems.value.forEach((item) => {
-					if (dropPromotionUnderCoupon(item)) return;
-					if (item.pricing_rules && item.pricing_rules.length > 0) {
-						item.discount_percentage = 0;
-						item.discount_amount = 0;
-						item.is_already_discounted = 0;
-						item.is_accumulative_discount = 0;
-						recalculateItem(item);
-					}
-				});
-				// Also clear any transaction-level header discount the server
-				// previously surfaced — if no offers remain, no header discount applies.
-				applyHeaderDiscountFromServer(null);
-				rebuildIncrementalCache();
+				clearAllPromotionDiscounts();
 
 				rememberRemovedOffers(invalidOffers);
 				const names = invalidOffers.map((o) => o.name).join(", ");
@@ -2323,6 +2325,13 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				}
 
 				appliedOffers.value = nextAppliedOffers;
+
+				// Server confirmed nothing applied (e.g. party filter excluded every
+				// selected rule, or apply_offers early-returned). Drop any promo
+				// line discount that may still be on the cart.
+				if (actuallyApplied.size === 0) {
+					clearAllPromotionDiscounts();
+				}
 
 				// 6. UI Feedback
 				if (invalidOffers.length > 0) {

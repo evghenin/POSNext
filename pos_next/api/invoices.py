@@ -3390,7 +3390,17 @@ def apply_offers(invoice_data, selected_offers=None):
 		pricing_results = erpnext_apply_pricing_rule(pricing_args, doc=pricing_args) or []
 
 		if not pricing_results:
-			return {"items": items}
+			# prepared_items were already cleared of prior promo discounts above.
+			# Returning the original `items` would re-stamp stale discounts on the cart
+			# (e.g. after a customer change makes the previous rule inapplicable).
+			return {
+				"items": [dict(item) for item in prepared_items],
+				"free_items": [],
+				"applied_pricing_rules": [],
+				"additional_discount_percentage": 0,
+				"discount_amount": 0,
+				"apply_discount_on": None,
+			}
 
 		raw_rule_names = set()
 		for result in pricing_results:
@@ -3494,7 +3504,15 @@ def apply_offers(invoice_data, selected_offers=None):
 			rule_map = {name: details for name, details in rule_map.items() if name in selected_offer_names}
 
 		if not rule_map:
-			return {"items": items}
+			# Same as empty pricing_results: do not echo the request's discounted lines.
+			return {
+				"items": [dict(item) for item in prepared_items],
+				"free_items": [],
+				"applied_pricing_rules": [],
+				"additional_discount_percentage": 0,
+				"discount_amount": 0,
+				"apply_discount_on": None,
+			}
 
 		applied_rules = set()
 		# Deduplicate free items using a dict keyed by (item_code, pricing_rule).
