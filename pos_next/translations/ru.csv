@@ -1102,7 +1102,7 @@
 "Loading variants...","Загрузка вариантов...",""
 "Loading {0}...","Загрузка {0}...",""
 "Locked","Заблокировано",""
-"Locked (coupon applied)","Заблокировано (применён купон)",""
+"Locked (coupon)","Заблокировано (купон)",""
 "Locked (promotional offer)","Заблокировано (акция)",""
 "Cannot edit item discount while a coupon applies to this item","Нельзя изменить скидку товара, пока к нему применён купон",""
 "Cannot add item discount while a promotional offer applies to this item","Нельзя добавить скидку товара, пока действует акция",""

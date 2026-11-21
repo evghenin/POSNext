@@ -203,7 +203,7 @@
 																@input="calculateTotals"
 															/>
 														</div>
-														<!-- Compact warning when rate editing disabled due to pricing rules -->
+														<!-- Rate lock is promo-only; coupon alone leaves rate editable -->
 														<p
 															v-if="
 																hasPricingRules &&
@@ -446,9 +446,9 @@
 														</div>
 													</div>
 												</div>
-												<!-- Compact warning when discount editing disabled due to promo/coupon -->
+												<!-- Discount lock: promo and/or coupon -->
 												<p
-													v-if="hasPricingRules"
+													v-if="hasDiscountLock"
 													class="mt-2 text-xs text-amber-600 flex items-center gap-1"
 												>
 													<FeatherIcon
@@ -456,8 +456,8 @@
 														class="w-3 h-3"
 													/>
 													{{
-														isCouponLocked
-															? __("Locked (coupon applied)")
+														isCouponLocked && !hasPricingRules
+															? __("Locked (coupon)")
 															: __("Locked (promotional offer)")
 													}}
 												</p>
@@ -680,15 +680,17 @@ function itemAffectedByCoupon(item) {
 	return true;
 }
 
+/** True when a pricing-rule / scheme promo is on the line (not a coupon alone). */
 function itemHasAppliedPromo(item) {
 	if (!item) return false;
 	if (item.is_free_item) return true;
-	if (itemAffectedByCoupon(item)) return true;
 	const rules = item.pricing_rules;
 	if (Array.isArray(rules) && rules.length > 0) return true;
 	if (typeof rules === "string" && rules.trim()) return true;
 	const source = item.discount_source || "";
-	return Boolean(source && source !== "coupon");
+	// Coupon-only lines keep rate editable; discount stays locked via isCouponLocked.
+	if (!source || source === "coupon") return false;
+	return true;
 }
 
 const isCouponLocked = computed(() => itemAffectedByCoupon(localItem.value));
@@ -738,13 +740,13 @@ const availableUoms = computed(() => {
 
 const currencySymbol = computed(() => getCurrencySymbol(props.currency));
 
-// Lock rate/discount only when the current qty qualifies for a promo
-// (e.g. qty 2–5 for Buy 2–5 Get 1). Qty 1 or 6+ stays editable.
+// Lock rate only for promos; lock discount for promos OR coupons.
+// Coupon alone (no active pricing rule) leaves rate editable.
 const isLockedFreeItem = computed(() => Boolean(localItem.value?.is_free_item));
 
 const hasPricingRules = computed(() => {
 	if (!localItem.value) return false;
-	// Already-applied promo/coupon on the line — lock even if the async
+	// Already-applied promo on the line — lock even if the async
 	// item_has_active_promotion check is still pending or returns false.
 	if (itemHasAppliedPromo(localItem.value)) return true;
 	if (itemHasActivePromotion.value) return true;
@@ -755,6 +757,11 @@ const hasPricingRules = computed(() => {
 	);
 });
 
+/** Discount field lock: promo and/or coupon covering this line. */
+const hasDiscountLock = computed(
+	() => hasPricingRules.value || isCouponLocked.value
+);
+
 const isItemLevelPromotion = computed(() => {
 	return localItem.value?.discount_source === "item_level_promotion";
 });
@@ -763,25 +770,19 @@ const canEditItemDiscount = computed(() => {
 	return settingsStore.allowItemDiscount && !isItemLevelPromotion.value;
 });
 
-// Rate editing is allowed only if:
-// 1. POS Settings allows rate editing AND
-// 2. Item does NOT have pricing rules (promotional offers) applied / configured
+// Rate: settings + no promo. Coupon alone does not lock rate.
 const canEditRate = computed(() => {
 	return settingsStore.allowUserToEditRate && !hasPricingRules.value;
 });
 
-// Item discount editing is allowed only if no promotional offer covers this item
+// Discount: settings + no promo and no coupon on this line.
 const canEditDiscount = computed(() => {
-	return settingsStore.allowItemDiscount && !hasPricingRules.value;
+	return settingsStore.allowItemDiscount && !hasDiscountLock.value;
 });
 
-// Tooltip message for why rate editing is disabled
 const rateEditDisabledReason = computed(() => {
 	if (!settingsStore.allowUserToEditRate) {
 		return __("Rate editing is disabled");
-	}
-	if (isCouponLocked.value) {
-		return __("Locked (coupon applied)");
 	}
 	if (hasPricingRules.value) {
 		return __("Locked (promotional offer)");
@@ -790,11 +791,14 @@ const rateEditDisabledReason = computed(() => {
 });
 
 const discountEditDisabledReason = computed(() => {
-	if (isCouponLocked.value) {
+	if (isCouponLocked.value && !hasPricingRules.value) {
 		return __("Cannot edit item discount while a coupon applies to this item");
 	}
 	if (hasPricingRules.value) {
 		return __("Cannot add item discount while a promotional offer applies to this item");
+	}
+	if (isCouponLocked.value) {
+		return __("Cannot edit item discount while a coupon applies to this item");
 	}
 	return "";
 });
@@ -1254,7 +1258,7 @@ function updateItem() {
 		discountType.value === "percentage" ? discountValue.value : 0;
 	let discountAmount = discountType.value === "amount" ? discountValue.value : 0;
 
-	if (hasPricingRules.value) {
+	if (hasDiscountLock.value) {
 		// Keep promotional / coupon discount values; do not allow manual override
 		discountPercentage = Number(localItem.value.discount_percentage) || 0;
 		discountAmount = Number(localItem.value.discount_amount) || 0;
@@ -1274,7 +1278,7 @@ function updateItem() {
 
 		if (attemptedPct !== initPct || attemptedAmt !== initAmt) {
 			showError(
-				isCouponLocked.value
+				isCouponLocked.value && !hasPricingRules.value
 					? __("Cannot edit item discount while a coupon applies to this item")
 					: __(
 							"Cannot add item discount while a promotional offer applies to this item"
@@ -1286,7 +1290,8 @@ function updateItem() {
 
 	const selectedSp = localSalesPerson.value || null;
 	const selectedSpMeta = salesPersons.value.find((p) => p.name === selectedSp);
-	const preservePromoDiscount = hasPricingRules.value || isItemLevelPromotion.value;
+	const preservePromoDiscount =
+		hasDiscountLock.value || isItemLevelPromotion.value;
 
 	const updatedItem = {
 		...localItem.value,
