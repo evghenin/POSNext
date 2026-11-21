@@ -1,0 +1,171 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-21 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "device_id",
+  "session_instance_id",
+  "status",
+  "column_break_1",
+  "mobile_user",
+  "pos_profile",
+  "device_label",
+  "section_token",
+  "link_token_hash",
+  "link_token_expires_at",
+  "column_break_2",
+  "paired_at",
+  "last_seen",
+  "disconnected_at",
+  "section_meta",
+  "user_agent"
+ ],
+ "fields": [
+  {
+   "fieldname": "device_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Device ID",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "session_instance_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Session Instance ID",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "default": "Connected",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Connected\nDisconnected\nRevoked",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "mobile_user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Mobile User",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "POS Profile",
+   "options": "POS Profile",
+   "reqd": 1
+  },
+  {
+   "fieldname": "device_label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Device Label"
+  },
+  {
+   "fieldname": "section_token",
+   "fieldtype": "Section Break",
+   "label": "Link Token"
+  },
+  {
+   "description": "SHA-256 hash of the time-limited link token. Plaintext token is shown once at pairing.",
+   "fieldname": "link_token_hash",
+   "fieldtype": "Data",
+   "label": "Link Token Hash",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "link_token_expires_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Link Token Expires At",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "paired_at",
+   "fieldtype": "Datetime",
+   "label": "Paired At",
+   "reqd": 1
+  },
+  {
+   "fieldname": "last_seen",
+   "fieldtype": "Datetime",
+   "label": "Last Seen"
+  },
+  {
+   "fieldname": "disconnected_at",
+   "fieldtype": "Datetime",
+   "label": "Disconnected At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_meta",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "user_agent",
+   "fieldtype": "Small Text",
+   "label": "User Agent"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "POS Mobile Device",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "POSNext Cashier",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Nexus POS Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "POSNext Mobile Scanner"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

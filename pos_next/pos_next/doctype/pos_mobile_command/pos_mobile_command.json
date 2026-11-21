@@ -1,0 +1,187 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-21 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "operation_id",
+  "batch_id",
+  "command_type",
+  "status",
+  "column_break_1",
+  "session_instance_id",
+  "device_id",
+  "mobile_user",
+  "cart_generation",
+  "section_payload",
+  "payload_json",
+  "payload_hash",
+  "column_break_2",
+  "result_json",
+  "created_at_client",
+  "delivered_at",
+  "acked_at",
+  "acked_by"
+ ],
+ "fields": [
+  {
+   "fieldname": "operation_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Operation ID",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "batch_id",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Batch ID",
+   "search_index": 1
+  },
+  {
+   "default": "add_item",
+   "fieldname": "command_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Command Type",
+   "options": "add_item\nreplace_cart\nmerge_cart",
+   "reqd": 1
+  },
+  {
+   "default": "queued",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "queued\ndelivered\napplied\nrejected\nunknown",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "session_instance_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Session Instance ID",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "device_id",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Device ID",
+   "reqd": 1
+  },
+  {
+   "fieldname": "mobile_user",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Mobile User",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cart_generation",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Cart Generation",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_payload",
+   "fieldtype": "Section Break",
+   "label": "Payload / Result"
+  },
+  {
+   "fieldname": "payload_json",
+   "fieldtype": "Long Text",
+   "label": "Payload JSON",
+   "reqd": 1
+  },
+  {
+   "fieldname": "payload_hash",
+   "fieldtype": "Data",
+   "label": "Payload Hash",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "result_json",
+   "fieldtype": "Long Text",
+   "label": "Result JSON"
+  },
+  {
+   "fieldname": "created_at_client",
+   "fieldtype": "Datetime",
+   "label": "Created At (Client)"
+  },
+  {
+   "fieldname": "delivered_at",
+   "fieldtype": "Datetime",
+   "label": "Delivered At"
+  },
+  {
+   "fieldname": "acked_at",
+   "fieldtype": "Datetime",
+   "label": "Acked At"
+  },
+  {
+   "fieldname": "acked_by",
+   "fieldtype": "Link",
+   "label": "Acked By",
+   "options": "User"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "POS Mobile Command",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "POSNext Cashier",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Nexus POS Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "POSNext Mobile Scanner"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 0
+}
