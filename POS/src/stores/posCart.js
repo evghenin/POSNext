@@ -7,6 +7,7 @@ import {
 import { useInvoice } from "@/composables/useInvoice";
 import {
 	COUPON_DISCOUNT_SOURCE,
+	buildExcludeDiscountedLineCoupon,
 	calculateCartCouponDiscount,
 	eligibleCouponSubtotal,
 	fixedCouponLineDiscount,
@@ -324,6 +325,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		clearInvoiceCart({ returnSerials });
 		customer.value = null;
 		offersStore.clearOneTimeContext();
+		offersStore.clearPartyContext();
 		appliedOffers.value = [];
 		appliedCoupon.value = null;
 		currentDraftId.value = null;
@@ -399,8 +401,23 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	}
 
 	async function setCustomer(selectedCustomer) {
+		const prevName = customer.value?.name || customer.value || null;
+		const nextName = selectedCustomer?.name || selectedCustomer || null;
 		customer.value = selectedCustomer;
-		await syncOneTimeContextForCurrentCustomer();
+
+		await Promise.all([
+			syncOneTimeContextForCurrentCustomer(),
+			offersStore.loadPartyContextForCustomer(nextName, selectedCustomer),
+		]);
+
+		// Customer / Customer Group rules and coupons must re-evaluate when the
+		// cart customer changes — even if item lines are unchanged.
+		if (prevName !== nextName) {
+			forceRefreshOffers();
+			if (appliedCoupon.value) {
+				scheduleCouponRevalidation();
+			}
+		}
 	}
 
 	async function loadDefaultCustomer() {
@@ -408,7 +425,11 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		const profileCustomer =
 			shiftStore.currentProfile?.customer || shiftStore.profileCustomer || null;
 		await setDefaultCustomer(profileCustomer);
-		await syncOneTimeContextForCurrentCustomer();
+		const name = customer.value?.name || customer.value || null;
+		await Promise.all([
+			syncOneTimeContextForCurrentCustomer(),
+			offersStore.loadPartyContextForCustomer(name, customer.value),
+		]);
 	}
 
 	function setPendingItem(item, qty = 1, mode = "uom") {
@@ -647,10 +668,49 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		};
 	}
 
+	function couponExcludesDiscountedItems(coupon) {
+		return Boolean(
+			coupon?.exclude_discounted_items || coupon?.coupon?.exclude_discounted_items
+		);
+	}
+
+	function repriceExcludeDiscountedCoupon(applied) {
+		const couponDoc = applied.coupon;
+		const priced = buildExcludeDiscountedLineCoupon(couponDoc, invoiceItems.value);
+		if (!priced.valid) {
+			clearCouponLines();
+			couponCode.value = null;
+			appliedCoupon.value = null;
+			showWarning(
+				__("Coupon {0} removed: {1}", [
+					applied.code || couponDoc?.coupon_code,
+					priced.reason === "no_eligible_items"
+						? __("No eligible items without a discount")
+						: __("Cart no longer meets requirements"),
+				])
+			);
+			return;
+		}
+		const amount = applyCouponLineUpdates(applied.code, priced.line_updates, couponDoc);
+		appliedCoupon.value = {
+			...applied,
+			amount,
+			line_updates: priced.line_updates,
+			exclude_discounted_items: true,
+		};
+	}
+
 	async function revalidateLineCoupon() {
 		const coupon = appliedCoupon.value;
 		// Offline carts keep their tagged lines; the server re-checks them when the invoice syncs.
 		if (!isLineLevelCoupon(coupon) || offlineState.isOffline) return;
+
+		// Local exclude-discounted coupons are priced on the client — do not ask the
+		// promotions validate_coupon path, which may ignore the new flag.
+		if (couponExcludesDiscountedItems(coupon)) {
+			repriceExcludeDiscountedCoupon(coupon);
+			return;
+		}
 
 		const seq = ++couponRevalidateSeq;
 		const waitUntil = Date.now() + COUPON_REVALIDATE_MAX_WAIT_MS;
@@ -2111,9 +2171,14 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		// redemptions + identified flag). Await here so we never evaluate offers
 		// before the customer gate is ready — setCustomer() alone can lose the
 		// race with the debounced cart/customer watcher below.
-		await syncOneTimeContextForCurrentCustomer();
+		// Party context (Customer / Customer Group ancestors) is loaded the same way.
+		const customerName = customer.value?.name || customer.value || null;
+		await Promise.all([
+			syncOneTimeContextForCurrentCustomer(),
+			offersStore.loadPartyContextForCustomer(customerName, customer.value),
+		]);
 
-		// Check cancellation after one-time context fetch
+		// Check cancellation after one-time / party context fetch
 		if (signal?.aborted) return;
 
 		// Generate current cart hash

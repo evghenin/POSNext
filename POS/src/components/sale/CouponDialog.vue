@@ -234,6 +234,7 @@
 import { isPromotionsAppInstalled, promoApi } from "@/utils/promoApi";
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency";
 import {
+	buildExcludeDiscountedLineCoupon,
 	calculateCartCouponDiscount,
 	eligibleCouponSubtotal,
 } from "@/utils/couponLines";
@@ -392,6 +393,27 @@ async function applyCoupon() {
 		}
 
 		const coupon = validationData.coupon;
+
+		// Exclude-discounted must be line-level: an invoice additional discount still
+		// reduces the whole cart. Apply only to undiscounted lines instead.
+		if (coupon.exclude_discounted_items) {
+			const priced = buildExcludeDiscountedLineCoupon(coupon, props.items || []);
+			if (!priced.valid) {
+				errorMessage.value =
+					priced.reason === "no_eligible_items"
+						? __(
+								"No eligible items for this coupon. It does not apply to discounted items."
+							)
+						: __("This coupon requires a minimum purchase of {0}", [
+								formatCurrency(coupon.min_amount),
+							]);
+				showWarning(errorMessage.value);
+				return;
+			}
+			applyLineCoupon(coupon, priced, { excludeDiscounted: true });
+			return;
+		}
+
 		if (linePriced) {
 			applyLineCoupon(coupon, validationData);
 			return;
@@ -407,14 +429,6 @@ async function applyCoupon() {
 			return;
 		}
 
-		if (coupon.exclude_discounted_items && baseAmount <= 0) {
-			errorMessage.value = __(
-				"No eligible items for this coupon. It does not apply to discounted items."
-			);
-			showWarning(errorMessage.value);
-			return;
-		}
-
 		appliedDiscount.value = {
 			name: coupon.coupon_name || coupon.coupon_code,
 			code: couponCode.value.toUpperCase(),
@@ -424,7 +438,7 @@ async function applyCoupon() {
 			coupon: coupon,
 			apply_on: coupon.apply_on,
 			base_amount: baseAmount,
-			exclude_discounted_items: Boolean(coupon.exclude_discounted_items),
+			exclude_discounted_items: false,
 		};
 
 		emit("discount-applied", appliedDiscount.value);
@@ -441,8 +455,8 @@ async function applyCoupon() {
 	}
 }
 
-// Priced by the server per cart line; min amount is checked on eligible lines there.
-function applyLineCoupon(coupon, result) {
+// Priced per cart line (server promotions app, or local exclude-discounted build).
+function applyLineCoupon(coupon, result, { excludeDiscounted = false } = {}) {
 	const code = couponCode.value.toUpperCase();
 	appliedDiscount.value = {
 		name: coupon.coupon_name || coupon.coupon_code,
@@ -454,6 +468,7 @@ function applyLineCoupon(coupon, result) {
 		apply_on: coupon.apply_on,
 		line_level: true,
 		line_updates: result.line_updates || [],
+		exclude_discounted_items: excludeDiscounted || Boolean(coupon.exclude_discounted_items),
 	};
 	emit("discount-applied", appliedDiscount.value);
 	showSuccess(__("{0} applied successfully", [code]));

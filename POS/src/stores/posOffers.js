@@ -52,6 +52,89 @@ export const usePOSOffersStore = defineStore("posOffers", () => {
 	const oneTimeCustomerIdentified = ref(false);
 	const redeemedOneTimeRules = ref([]);
 
+	// Party context for Pricing Rule applicable_for Customer / Customer Group.
+	// `customer_groups` includes blank + the cart customer's group ancestors
+	// (mirrors ERPNext _get_tree_conditions).
+	const partyContext = ref({
+		customer: null,
+		customer_group: null,
+		customer_groups: [""],
+	});
+
+	function setPartyContext({ customer = null, customer_group = null, customer_groups = [""] } = {}) {
+		partyContext.value = {
+			customer: customer || null,
+			customer_group: customer_group || null,
+			customer_groups: Array.isArray(customer_groups) ? customer_groups : [""],
+		};
+	}
+
+	function clearPartyContext() {
+		setPartyContext({ customer: null, customer_group: null, customer_groups: [""] });
+	}
+
+	/**
+	 * Load Customer / Customer Group ancestors for offer eligibility.
+	 * Online: fetch from server. Offline: use customer.customer_group when present.
+	 */
+	async function loadPartyContextForCustomer(customerName, customerObj = null) {
+		const name = customerName || null;
+		if (!name) {
+			clearPartyContext();
+			return partyContext.value;
+		}
+
+		if (!isOffline()) {
+			try {
+				const resp = await call(promoApi.getCustomerPartyContext(), { customer: name });
+				const ctx = resp?.message || resp || {};
+				setPartyContext({
+					customer: ctx.customer || name,
+					customer_group: ctx.customer_group || null,
+					customer_groups: ctx.customer_groups || [""],
+				});
+				return partyContext.value;
+			} catch (error) {
+				console.error("Error fetching customer party context:", error);
+			}
+		}
+
+		const group =
+			customerObj?.customer_group ||
+			(typeof customerObj === "object" ? customerObj?.customer_group : null) ||
+			null;
+		setPartyContext({
+			customer: name,
+			customer_group: group,
+			customer_groups: group ? ["", group] : [""],
+		});
+		return partyContext.value;
+	}
+
+	/**
+	 * Whether an offer's party restriction matches the current cart customer.
+	 * Unrestricted rules always match. Territory/Campaign/etc. do not (no cart context).
+	 */
+	function offerMatchesParty(offer) {
+		const applicable = offer?.applicable_for || "";
+		if (applicable && !["Customer", "Customer Group"].includes(applicable)) {
+			return false;
+		}
+
+		const ruleCustomer = offer?.customer || "";
+		const ruleGroup = offer?.customer_group || "";
+		const cartCustomer = partyContext.value.customer || null;
+		const groups = partyContext.value.customer_groups || [""];
+
+		if (ruleCustomer && ruleCustomer !== cartCustomer) {
+			return false;
+		}
+		if (ruleGroup && !groups.includes(ruleGroup)) {
+			return false;
+		}
+		return true;
+	}
+
 	function setOneTimeContext({ identified = false, redeemedRules = [] } = {}) {
 		oneTimeCustomerIdentified.value = !!identified;
 		redeemedOneTimeRules.value = Array.isArray(redeemedRules) ? redeemedRules : [];
@@ -301,6 +384,14 @@ export const usePOSOffersStore = defineStore("posOffers", () => {
 			};
 		}
 
+		// Customer / Customer Group restriction (mirrors Pricing Rule applicable_for)
+		if (!offerMatchesParty(offer)) {
+			return {
+				eligible: false,
+				reason: __("Offer does not apply to the selected customer"),
+			};
+		}
+
 		// One-time-per-customer gate (mirrors the server gate in apply_offers):
 		// such offers require an identified (non walk-in) customer and must not
 		// re-apply to a customer who has already redeemed them.
@@ -534,6 +625,7 @@ export const usePOSOffersStore = defineStore("posOffers", () => {
 		hasFetched,
 		oneTimeCustomerIdentified,
 		redeemedOneTimeRules,
+		partyContext,
 
 		// Computed
 		allEligibleOffers,
@@ -547,6 +639,7 @@ export const usePOSOffersStore = defineStore("posOffers", () => {
 		setAvailableOffers,
 		clearOffers,
 		checkOfferEligibility,
+		offerMatchesParty,
 		getEligibleItemAmount,
 		getUnlockAmount,
 		ensureOffersFetched,
@@ -554,6 +647,9 @@ export const usePOSOffersStore = defineStore("posOffers", () => {
 		addRedeemedOneTimeRule,
 		clearOneTimeContext,
 		loadOneTimeContextForCustomer,
+		loadPartyContextForCustomer,
+		setPartyContext,
+		clearPartyContext,
 		recordOfflineRedemptions,
 	};
 });

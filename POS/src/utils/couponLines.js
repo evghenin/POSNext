@@ -119,6 +119,100 @@ export function calculateCartCouponDiscount(coupon, baseAmount) {
 	return { valid: true, discount, base };
 }
 
+function lineGross(item) {
+	const unit = Number(item.price_list_rate || item.rate) || 0;
+	const qty = Number(item.quantity) || 0;
+	return unit * qty;
+}
+
+/**
+ * Build per-line coupon updates that skip already-discounted / free lines.
+ * Used when exclude_discounted_items is set so the coupon is not an invoice-level
+ * additional discount (which would still reduce every line's share of the total).
+ */
+export function buildExcludeDiscountedLineCoupon(coupon, items) {
+	const list = Array.isArray(items) ? items : [];
+	const eligible = [];
+	for (let i = 0; i < list.length; i++) {
+		const item = list[i];
+		if (!item || item.is_free_item) continue;
+		if (isLineAlreadyDiscounted(item)) continue;
+		const base = lineGross(item);
+		if (base <= 0) continue;
+		eligible.push({ index: i, item, base });
+	}
+
+	const eligibleBase = eligible.reduce((sum, row) => sum + row.base, 0);
+	const priced = calculateCartCouponDiscount(coupon, eligibleBase);
+	if (!priced.valid) {
+		return {
+			valid: false,
+			reason: priced.reason || "min_amount",
+			total_discount: 0,
+			line_updates: [],
+			base: eligibleBase,
+		};
+	}
+	if (eligibleBase <= 0 || priced.discount <= 0 || eligible.length === 0) {
+		return {
+			valid: false,
+			reason: "no_eligible_items",
+			total_discount: 0,
+			line_updates: [],
+			base: eligibleBase,
+		};
+	}
+
+	const isPercentage = coupon?.discount_type === "Percentage";
+	const percentage = isPercentage ? Number(coupon.discount_percentage) || 0 : 0;
+	const maxAmount = Number(coupon?.max_amount) || 0;
+	const useFixedShare = !isPercentage || (maxAmount > 0 && priced.discount < (eligibleBase * percentage) / 100);
+
+	const line_updates = [];
+	let allocated = 0;
+	eligible.forEach((row, idx) => {
+		let couponPart;
+		if (useFixedShare) {
+			if (idx === eligible.length - 1) {
+				couponPart = Math.max(priced.discount - allocated, 0);
+			} else {
+				couponPart = (priced.discount * row.base) / eligibleBase;
+				allocated += couponPart;
+			}
+			line_updates.push({
+				line_key: row.index,
+				item_code: row.item.item_code,
+				discount_percentage: 0,
+				discount_amount: couponPart,
+				coupon_discount_amount: couponPart,
+				stacked: false,
+			});
+		} else {
+			couponPart = (row.base * percentage) / 100;
+			line_updates.push({
+				line_key: row.index,
+				item_code: row.item.item_code,
+				discount_percentage: percentage,
+				discount_amount: 0,
+				coupon_discount_amount: couponPart,
+				stacked: false,
+			});
+		}
+	});
+
+	const total_discount = line_updates.reduce(
+		(sum, row) => sum + (Number(row.coupon_discount_amount) || 0),
+		0
+	);
+
+	return {
+		valid: true,
+		total_discount,
+		line_updates,
+		base: eligibleBase,
+	};
+}
+
 /**
  * Largest discount a fixed coupon line may carry at its current quantity:
  * never more than the server allocated, the line itself, or the coupon's

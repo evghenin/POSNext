@@ -5,7 +5,9 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from pos_next.api.offers import (
+	_party_sql_conditions,
 	_pricing_rule_affects_item,
+	_resolve_customer_party_context,
 	item_has_active_promotion,
 	validate_coupon,
 )
@@ -173,3 +175,62 @@ class TestItemHasActivePromotion(unittest.TestCase):
 
 		self.assertEqual(result, {"has_promotion": False})
 		mock_db.sql.assert_not_called()
+
+	@patch("pos_next.api.offers._pricing_rule_affects_item", return_value=True)
+	@patch("pos_next.api.offers.frappe.get_all", return_value=["Retail", "All Customer Groups"])
+	@patch("pos_next.api.offers.frappe.db", new_callable=MagicMock)
+	def test_sql_includes_party_filter_for_cart_customer(self, mock_db, _mock_get_all, _mock_affects):
+		mock_db.get_value.side_effect = [
+			MagicMock(item_group="Products", brand=None, stock_uom="Nos"),
+			"Retail",  # Customer.customer_group
+			(1, 10),  # Customer Group lft/rgt
+			"All Customer Groups",  # root
+		]
+		mock_db.has_column.return_value = False
+		mock_db.sql.return_value = [{"name": "PR-1", "rate_or_discount": "Discount Percentage"}]
+
+		result = item_has_active_promotion(
+			"ITEM-1", company="Test Co", qty=1, customer="Cust-A"
+		)
+
+		self.assertEqual(result, {"has_promotion": True})
+		sql = mock_db.sql.call_args.args[0]
+		params = mock_db.sql.call_args.args[1]
+		self.assertIn("IFNULL(pr.customer, '') IN", sql)
+		self.assertEqual(params["party_customer"], "Cust-A")
+		self.assertIn("IFNULL(pr.customer_group, '') IN", sql)
+
+	@patch("pos_next.api.offers.frappe.db", new_callable=MagicMock)
+	def test_no_customer_requires_blank_party_fields(self, mock_db):
+		sql, values = _party_sql_conditions(None)
+		self.assertIn("IFNULL(pr.customer, '') = ''", sql)
+		self.assertIn("IFNULL(pr.customer_group, '') = ''", sql)
+		self.assertEqual(values, {})
+
+
+class TestCustomerPartyContext(unittest.TestCase):
+	@patch("pos_next.api.offers.frappe.db", new_callable=MagicMock)
+	def test_blank_customer_has_only_empty_group(self, mock_db):
+		ctx = _resolve_customer_party_context(None)
+		self.assertIsNone(ctx["customer"])
+		self.assertIsNone(ctx["customer_group"])
+		self.assertEqual(ctx["customer_groups"], [""])
+		mock_db.get_value.assert_not_called()
+
+	@patch("pos_next.api.offers.frappe.get_all", return_value=["Retail", "Commercial"])
+	@patch("pos_next.api.offers.frappe.db", new_callable=MagicMock)
+	def test_customer_resolves_group_ancestors(self, mock_db, _mock_get_all):
+		mock_db.get_value.side_effect = [
+			"Retail",  # Customer.customer_group
+			(5, 8),  # lft, rgt
+			"All Customer Groups",  # root
+		]
+
+		ctx = _resolve_customer_party_context("Cust-A")
+
+		self.assertEqual(ctx["customer"], "Cust-A")
+		self.assertEqual(ctx["customer_group"], "Retail")
+		self.assertEqual(ctx["customer_groups"][0], "")
+		self.assertIn("Retail", ctx["customer_groups"])
+		self.assertIn("Commercial", ctx["customer_groups"])
+		self.assertIn("All Customer Groups", ctx["customer_groups"])

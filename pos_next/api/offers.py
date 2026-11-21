@@ -93,6 +93,10 @@ class Offer:
 	recurse_for: float = 0  # Give free item for every N quantity (used when is_recursive=1)
 	apply_recursion_over: float = 0  # Qty for which recursion isn't applicable
 	one_time_per_customer: int = 0  # 1 if each customer may redeem this offer only once
+	# Party restriction (mirrors Pricing Rule applicable_for)
+	applicable_for: str | None = None
+	customer: str | None = None
+	customer_group: str | None = None
 
 	def to_dict(self) -> dict:
 		"""Convert to dictionary for API response"""
@@ -355,6 +359,9 @@ class OfferBuilder:
 			recurse_for=flt(slab.get("recurse_for", 0)) if not is_price_discount else 0,
 			apply_recursion_over=flt(slab.get("apply_recursion_over", 0)) if not is_price_discount else 0,
 			one_time_per_customer=1 if rule.get("one_time_per_customer") else 0,
+			applicable_for=rule.get("applicable_for") or None,
+			customer=rule.get("customer") or None,
+			customer_group=rule.get("customer_group") or None,
 		)
 
 	@staticmethod
@@ -401,6 +408,9 @@ class OfferBuilder:
 			eligible_item_groups=eligible_item_groups,
 			eligible_brands=eligible_brands,
 			one_time_per_customer=1 if rule.get("one_time_per_customer") else 0,
+			applicable_for=rule.get("applicable_for") or None,
+			customer=rule.get("customer") or None,
+			customer_group=rule.get("customer_group") or None,
 		)
 
 
@@ -473,7 +483,8 @@ def _get_promotional_scheme_offers(company: str, date: str) -> list[Offer]:
 		SELECT
 			name, title, apply_on, selling, promotional_scheme,
 			promotional_scheme_id, coupon_code_based, one_time_per_customer,
-			price_or_product_discount, priority, valid_from, valid_upto
+			price_or_product_discount, priority, valid_from, valid_upto,
+			applicable_for, customer, customer_group
 		FROM `tabPricing Rule`
 		WHERE
 			disable = 0
@@ -531,7 +542,8 @@ def _get_standalone_pricing_rule_offers(company: str, date: str) -> list[Offer]:
 			coupon_code_based, one_time_per_customer, price_or_product_discount,
 			rate_or_discount, rate, discount_amount, discount_percentage,
 			min_qty, max_qty, min_amt, max_amt,
-			priority, valid_from, valid_upto
+			priority, valid_from, valid_upto,
+			applicable_for, customer, customer_group
 		FROM `tabPricing Rule`
 		WHERE
 			disable = 0
@@ -640,6 +652,91 @@ def validate_coupon(coupon_code: str, company: str, customer: str | None = None)
 RATE_FROM_PRICE_LIST = "Rate from Price List"
 
 
+def _customer_group_ancestors(customer_group: str | None) -> list[str]:
+	"""Customer groups that match ERPNext ``_get_tree_conditions`` for a cart customer.
+
+	Includes the group itself, its ancestors, the root group, and blank (unrestricted).
+	"""
+	groups: list[str] = [""]
+	if not customer_group:
+		return groups
+
+	lft_rgt = frappe.db.get_value("Customer Group", customer_group, ["lft", "rgt"])
+	if not lft_rgt:
+		return groups
+
+	lft, rgt = lft_rgt
+	ancestors = frappe.get_all(
+		"Customer Group",
+		filters={"lft": ["<=", lft], "rgt": [">=", rgt]},
+		pluck="name",
+	)
+	for name in ancestors or []:
+		if name not in groups:
+			groups.append(name)
+
+	root = frappe.db.get_value(
+		"Customer Group",
+		{"is_group": 1, "parent_customer_group": ("is", "not set")},
+		"name",
+	)
+	if root and root not in groups:
+		groups.append(root)
+
+	return groups
+
+
+def _resolve_customer_party_context(customer: str | None = None) -> dict:
+	"""Resolve customer + customer-group ancestors for Pricing Rule party filters."""
+	customer_name = (customer or "").strip() or None
+	customer_group = None
+	if customer_name:
+		customer_group = frappe.db.get_value("Customer", customer_name, "customer_group")
+
+	return {
+		"customer": customer_name,
+		"customer_group": customer_group,
+		"customer_groups": _customer_group_ancestors(customer_group),
+	}
+
+
+@frappe.whitelist()
+def get_customer_party_context(customer: str | None = None) -> dict:
+	"""Party context for client-side offer eligibility (Customer / Customer Group)."""
+	return _resolve_customer_party_context(customer)
+
+
+def _party_sql_conditions(customer: str | None) -> tuple[str, dict]:
+	"""SQL fragment mirroring ERPNext ``get_other_conditions`` for cart party fields.
+
+	Rules restricted to Territory / Campaign / Sales Partner are excluded — POS
+	does not supply those args, so only blank values match (same as ERPNext when
+	the args are absent).
+	"""
+	ctx = _resolve_customer_party_context(customer)
+	values: dict = {}
+	parts = [
+		"AND IFNULL(pr.territory, '') = ''",
+		"AND IFNULL(pr.sales_partner, '') = ''",
+		"AND IFNULL(pr.campaign, '') = ''",
+	]
+
+	if ctx["customer"]:
+		parts.append("AND IFNULL(pr.customer, '') IN (%(party_customer)s, '')")
+		values["party_customer"] = ctx["customer"]
+		placeholders = []
+		for i, group in enumerate(ctx["customer_groups"]):
+			key = f"party_cg_{i}"
+			placeholders.append(f"%({key})s")
+			values[key] = group
+		parts.append(f"AND IFNULL(pr.customer_group, '') IN ({', '.join(placeholders)})")
+	else:
+		parts.append("AND IFNULL(pr.customer, '') = ''")
+		parts.append("AND IFNULL(pr.customer_group, '') = ''")
+
+	return "\n\t\t\t".join(parts), values
+
+
 def _pricing_rule_affects_item(rule: dict, item_code: str, stock_uom: str | None = None) -> bool:
 	"""Return True when a matched Pricing Rule would actually change the item.
 
@@ -670,12 +767,20 @@ def _pricing_rule_affects_item(rule: dict, item_code: str, stock_uom: str | None
 
 
 @frappe.whitelist()
-def item_has_active_promotion(item_code: str, company: str | None = None, qty: float | int | str = 1) -> dict:
+def item_has_active_promotion(
+	item_code: str,
+	company: str | None = None,
+	qty: float | int | str = 1,
+	customer: str | None = None,
+) -> dict:
 	"""Whether this quantity of an item has an active selling pricing rule that applies.
 
 	Used by the item edit dialog to lock manual rate edits while a promotion applies.
 	Criteria match alone is not enough for ``Rate from Price List`` rules — the item
 	must also have a price in the rule's target price list.
+
+	``customer`` is the cart customer: rules limited to another Customer or
+	Customer Group are not treated as applicable.
 	"""
 	quantity = flt(qty)
 	if not item_code or quantity <= 0:
@@ -691,6 +796,18 @@ def item_has_active_promotion(item_code: str, company: str | None = None, qty: f
 	if frappe.db.has_column("Pricing Rule", "custom_rate_from_price_list"):
 		select_fields += ", pr.custom_rate_from_price_list"
 
+	party_sql, party_values = _party_sql_conditions(customer)
+
+	params = {
+		"item_code": item_code,
+		"item_group": item.item_group,
+		"brand": item.brand,
+		"company": company or "",
+		"date": nowdate(),
+		"qty": quantity,
+		**party_values,
+	}
+
 	rules = frappe.db.sql(
 		f"""
 		SELECT {select_fields}
@@ -703,6 +820,7 @@ def item_has_active_promotion(item_code: str, company: str | None = None, qty: f
 			AND (pr.valid_upto IS NULL OR pr.valid_upto >= %(date)s)
 			AND (IFNULL(pr.min_qty, 0) = 0 OR pr.min_qty <= %(qty)s)
 			AND (IFNULL(pr.max_qty, 0) = 0 OR pr.max_qty >= %(qty)s)
+			{party_sql}
 			AND (
 				(
 					pr.apply_on = 'Item Code'
@@ -729,14 +847,7 @@ def item_has_active_promotion(item_code: str, company: str | None = None, qty: f
 				)
 			)
 		""",
-		{
-			"item_code": item_code,
-			"item_group": item.item_group,
-			"brand": item.brand,
-			"company": company or "",
-			"date": nowdate(),
-			"qty": quantity,
-		},
+		params,
 		as_dict=1,
 	)
 

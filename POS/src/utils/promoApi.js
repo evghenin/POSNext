@@ -50,6 +50,11 @@ export const promoApi = {
 			"posnext_promotions.api.offers.item_has_active_promotion",
 			"pos_next.api.offers.item_has_active_promotion",
 		),
+	getCustomerPartyContext: () =>
+		promoOrPos(
+			"posnext_promotions.api.offers.get_customer_party_context",
+			"pos_next.api.offers.get_customer_party_context",
+		),
 	getCustomerOneTimeRedemptions: () =>
 		promoOrPos(
 			"posnext_promotions.api.offers.get_customer_one_time_redemptions",

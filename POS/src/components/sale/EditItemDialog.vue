@@ -550,6 +550,7 @@ import { promoApi } from "@/utils/promoApi";
 import { useToast } from "@/composables/useToast";
 import { usePOSSettingsStore } from "@/stores/posSettings";
 import { usePOSOffersStore } from "@/stores/posOffers";
+import { usePOSCartStore } from "@/stores/posCart";
 import { usePOSShiftStore } from "@/stores/posShift";
 import { useSerialNumberStore } from "@/stores/serialNumber";
 import { getItemStock } from "@/utils/stockValidator";
@@ -571,6 +572,7 @@ import SelectInput from "@/components/common/SelectInput.vue";
 const { showSuccess, showError, showWarning } = useToast();
 const settingsStore = usePOSSettingsStore();
 const offersStore = usePOSOffersStore();
+const cartStore = usePOSCartStore();
 const shiftStore = usePOSShiftStore();
 const serialStore = useSerialNumberStore();
 
@@ -588,6 +590,7 @@ function isItemCoveredByOffer(item, offers, qty) {
 
 	for (const offer of offers) {
 		if (!offer || offer.coupon_based) continue;
+		if (!offersStore.offerMatchesParty(offer)) continue;
 
 		// Rate-from-price-list rules need an Item Price in the target list;
 		// criteria match alone is not enough. Defer to item_has_active_promotion.
@@ -670,10 +673,12 @@ async function checkItemPromotion(itemCode, qty) {
 
 	try {
 		const company = shiftStore.currentProfile?.company || shiftStore.profileCompany;
+		const cartCustomer = cartStore.customer?.name || cartStore.customer || undefined;
 		const resp = await call(promoApi.itemHasActivePromotion(), {
 			item_code: itemCode,
 			company: company || undefined,
 			qty: quantity,
+			customer: cartCustomer || undefined,
 		});
 		if (requestId !== promotionCheckRequestId) return;
 		const result = resp?.message ?? resp;
@@ -886,6 +891,15 @@ watch(localQuantity, (newQty) => {
 	if (isInitializingItem.value || !localItem.value?.item_code) return;
 	checkItemPromotion(localItem.value.item_code, newQty);
 });
+
+// Re-evaluate when cart customer changes (Customer / Customer Group rules)
+watch(
+	() => cartStore.customer?.name || cartStore.customer,
+	() => {
+		if (!localItem.value?.item_code) return;
+		checkItemPromotion(localItem.value.item_code, localQuantity.value);
+	}
+);
 
 /**
  * Intelligently determine the step size based on current quantity

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	buildExcludeDiscountedLineCoupon,
 	calculateCartCouponDiscount,
 	eligibleCouponSubtotal,
 	fixedCouponLineDiscount,
@@ -126,5 +127,46 @@ describe("couponLines", () => {
 
 		const amt = { discount_type: "Amount", discount_amount: 30 };
 		expect(calculateCartCouponDiscount(amt, 20)).toMatchObject({ valid: true, discount: 20 });
+	});
+
+	it("builds line updates only for undiscounted items when exclude is on", () => {
+		const items = [
+			{ item_code: "A", price_list_rate: 100, quantity: 1 },
+			{
+				item_code: "B",
+				price_list_rate: 100,
+				quantity: 1,
+				discount_percentage: 20,
+				discount_source: "manual_discount",
+			},
+			{ item_code: "C", price_list_rate: 50, quantity: 2 },
+		];
+		const result = buildExcludeDiscountedLineCoupon(
+			{ discount_type: "Percentage", discount_percentage: 10 },
+			items
+		);
+		expect(result.valid).toBe(true);
+		expect(result.line_updates).toHaveLength(2);
+		expect(result.line_updates.map((u) => u.item_code)).toEqual(["A", "C"]);
+		expect(result.line_updates.every((u) => u.discount_percentage === 10)).toBe(true);
+		expect(result.total_discount).toBe(20);
+	});
+
+	it("rejects exclude coupons when every line is already discounted", () => {
+		const items = [
+			{
+				item_code: "B",
+				price_list_rate: 100,
+				quantity: 1,
+				discount_percentage: 20,
+				discount_source: "manual_discount",
+			},
+		];
+		const result = buildExcludeDiscountedLineCoupon(
+			{ discount_type: "Percentage", discount_percentage: 10 },
+			items
+		);
+		expect(result.valid).toBe(false);
+		expect(result.reason).toBe("no_eligible_items");
 	});
 });
