@@ -1,6 +1,7 @@
 import { createResource } from "frappe-ui";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
+import { setCurrencyPrecision } from "@/utils/currency";
 import { useBootstrapStore } from "./bootstrap";
 
 export const usePOSSettingsStore = defineStore("posSettings", () => {
@@ -189,12 +190,18 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		() => Number.parseInt(settings.value.session_lock_timeout) || 5
 	);
 
+	/** Apply POS Settings decimal_precision to formatCurrency / roundCurrency. */
+	function syncCurrencyPrecisionFromSettings() {
+		setCurrencyPrecision(settings.value.decimal_precision);
+	}
+
 	// Resource
 	const settingsResource = createResource({
 		url: "pos_next.pos_next.doctype.pos_settings.pos_settings.get_pos_settings",
 		onSuccess(data) {
 			if (data) {
 				Object.assign(settings.value, data);
+				syncCurrencyPrecisionFromSettings();
 				isLoaded.value = true;
 			}
 			isLoading.value = false;
@@ -219,6 +226,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			const preloadedSettings = bootstrapStore.getPreloadedPOSSettings();
 			if (preloadedSettings && Object.keys(preloadedSettings).length > 0) {
 				Object.assign(settings.value, preloadedSettings);
+				syncCurrencyPrecisionFromSettings();
 				isLoaded.value = true;
 				isLoading.value = false;
 				return true;

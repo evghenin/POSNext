@@ -33,6 +33,16 @@ export function initPrecision(data) {
 	};
 }
 
+/**
+ * Override display/rounding currency decimals (POS Settings.decimal_precision).
+ * System Settings currency_precision remains the bootstrap default until this runs.
+ */
+export function setCurrencyPrecision(precision) {
+	const parsed = Number.parseInt(precision, 10);
+	if (!Number.isFinite(parsed) || parsed < 0) return;
+	settings.currency = parsed;
+}
+
 /** Get current settings */
 export function getPrecision() {
 	return { ...settings };

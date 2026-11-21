@@ -192,9 +192,13 @@ async function initializeApp() {
 				const bootstrapStore = useBootstrapStore();
 				try {
 					await bootstrapStore.loadInitialData();
-					// Initialize precision settings from bootstrap data
-					const { initPrecision } = await import("./utils/currency");
+					// System Settings precision first; POS Settings.decimal_precision overrides for UI
+					const { initPrecision, setCurrencyPrecision } = await import("./utils/currency");
 					initPrecision(bootstrapStore.getPreloadedPrecision());
+					const preloadedPosSettings = bootstrapStore.getPreloadedPOSSettings?.();
+					if (preloadedPosSettings?.decimal_precision != null) {
+						setCurrencyPrecision(preloadedPosSettings.decimal_precision);
+					}
 					log.debug("Precision settings initialized from bootstrap");
 
 					// Initialize Socket.IO with correct site name from bootstrap
