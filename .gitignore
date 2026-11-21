@@ -8,7 +8,10 @@ __pycache__
 
 # Build artifacts
 pos_next/public/pos/
-pos_next/www/
+pos_next/public/pos_scanner/
+# POS Vite emits these; keep committed www pages (e.g. pos_scanner) trackable
+pos_next/www/pos.html
+pos_next/www/pos-sw.js
 yarn.lock
 package-lock.json
 CLAUDE.md
