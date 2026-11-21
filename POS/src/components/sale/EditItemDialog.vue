@@ -589,6 +589,11 @@ function isItemCoveredByOffer(item, offers, qty) {
 	for (const offer of offers) {
 		if (!offer || offer.coupon_based) continue;
 
+		// Rate-from-price-list rules need an Item Price in the target list;
+		// criteria match alone is not enough. Defer to item_has_active_promotion.
+		const discountType = offer.discount_type || offer.rate_or_discount;
+		if (discountType === "Rate from Price List") continue;
+
 		const minQty = Number(offer.min_qty) || 0;
 		const maxQty = Number(offer.max_qty) || 0;
 		if (minQty > 0 && q < minQty) continue;

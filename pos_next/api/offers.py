@@ -637,23 +637,63 @@ def validate_coupon(coupon_code: str, company: str, customer: str | None = None)
 	return {"valid": True, "coupon": coupon}
 
 
+RATE_FROM_PRICE_LIST = "Rate from Price List"
+
+
+def _pricing_rule_affects_item(rule: dict, item_code: str, stock_uom: str | None = None) -> bool:
+	"""Return True when a matched Pricing Rule would actually change the item.
+
+	``Rate from Price List`` rules (advanced-pricing-rules) only apply when the
+	item has an Item Price in the rule's target price list. Matching the item
+	group/brand alone is not enough — otherwise POS locks manual discounts on
+	lines whose rate never changed.
+	"""
+	if rule.get("rate_or_discount") != RATE_FROM_PRICE_LIST:
+		return True
+
+	price_list = rule.get("custom_rate_from_price_list")
+	if not price_list:
+		return False
+
+	from erpnext.stock.get_item_details import get_price_list_rate_for
+
+	ctx = frappe._dict(
+		{
+			"price_list": price_list,
+			"uom": stock_uom,
+			"stock_uom": stock_uom,
+			"transaction_date": nowdate(),
+			"qty": 1,
+		}
+	)
+	return get_price_list_rate_for(ctx, item_code) is not None
+
+
 @frappe.whitelist()
 def item_has_active_promotion(item_code: str, company: str | None = None, qty: float | int | str = 1) -> dict:
-	"""Whether this quantity of an item matches an active selling pricing rule.
+	"""Whether this quantity of an item has an active selling pricing rule that applies.
 
 	Used by the item edit dialog to lock manual rate edits while a promotion applies.
+	Criteria match alone is not enough for ``Rate from Price List`` rules — the item
+	must also have a price in the rule's target price list.
 	"""
 	quantity = flt(qty)
 	if not item_code or quantity <= 0:
 		return {"has_promotion": False}
 
-	item = frappe.db.get_value("Item", item_code, ["item_group", "brand"], as_dict=True)
+	item = frappe.db.get_value(
+		"Item", item_code, ["item_group", "brand", "stock_uom"], as_dict=True
+	)
 	if not item:
 		return {"has_promotion": False}
 
-	rule = frappe.db.sql(
-		"""
-		SELECT pr.name
+	select_fields = "pr.name, pr.rate_or_discount"
+	if frappe.db.has_column("Pricing Rule", "custom_rate_from_price_list"):
+		select_fields += ", pr.custom_rate_from_price_list"
+
+	rules = frappe.db.sql(
+		f"""
+		SELECT {select_fields}
 		FROM `tabPricing Rule` pr
 		WHERE
 			pr.disable = 0
@@ -688,7 +728,6 @@ def item_has_active_promotion(item_code: str, company: str | None = None, qty: f
 					)
 				)
 			)
-		LIMIT 1
 		""",
 		{
 			"item_code": item_code,
@@ -698,6 +737,11 @@ def item_has_active_promotion(item_code: str, company: str | None = None, qty: f
 			"date": nowdate(),
 			"qty": quantity,
 		},
+		as_dict=1,
 	)
 
-	return {"has_promotion": bool(rule)}
+	for rule in rules:
+		if _pricing_rule_affects_item(rule, item_code, stock_uom=item.stock_uom):
+			return {"has_promotion": True}
+
+	return {"has_promotion": False}
