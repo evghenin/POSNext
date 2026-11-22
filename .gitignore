@@ -8,10 +8,8 @@ __pycache__
 
 # Build artifacts
 pos_next/public/pos/
-# Generated POS Vue www shell; keep mobile scanner host page tracked
+# Generated POS Vue www shell (mobile scanner UI lives in POSNext_scanner APK)
 pos_next/www/*
-!pos_next/www/pos_scanner.html
-!pos_next/www/pos_scanner.py
 yarn.lock
 package-lock.json
 CLAUDE.md

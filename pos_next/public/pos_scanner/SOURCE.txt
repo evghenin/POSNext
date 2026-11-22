@@ -1,4 +1,0 @@
-Built from https://github.com/evghenin/POSNext_scanner
-Ref: e1694c9aad37f618c661b2c145135395ef8c092f (v0.1.3 / Cloudflare-safe OCR tessdata + RU status)
-Do not edit these assets by hand. Refresh with:
-  ./scripts/publish-pos-scanner.sh /path/to/POSNext_scanner
