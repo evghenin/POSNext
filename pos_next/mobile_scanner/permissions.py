@@ -40,7 +40,11 @@ def require_cashier_or_manager(user: str | None = None) -> str:
 
 
 def require_mobile_scanner(user: str | None = None) -> str:
-	"""Mobile phone APIs: dedicated scanner role, cashier, manager, or System Manager."""
+	"""Role check for a logged-in scanner user.
+
+	Phone APIs do not call this. They allow Guest and authenticate with the
+	one-time PIN/QR or the issued link_token.
+	"""
 	user = user or require_logged_in()
 	if not user_has_any_role((ROLE_MOBILE_SCANNER, ROLE_CASHIER, ROLE_MANAGER), user):
 		frappe.throw(_("Not permitted to use the mobile scanner"), frappe.PermissionError)

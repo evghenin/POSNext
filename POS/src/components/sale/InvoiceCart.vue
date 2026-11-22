@@ -738,6 +738,35 @@
 
 				<!-- Quick Actions Grid -->
 				<div class="grid grid-cols-2 gap-2 sm:gap-2.5 w-full max-w-lg">
+					<!-- Connect scanner -->
+					<button
+						type="button"
+						@click="$emit('pair-scanner')"
+						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-teal-300 hover:bg-teal-50 active:bg-teal-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						:title="__('Connect a mobile scanner')"
+					>
+						<div
+							class="w-9 h-9 sm:w-10 sm:h-10 bg-teal-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-teal-100 transition-colors"
+						>
+							<svg
+								class="w-5 h-5 text-teal-600"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+								/>
+							</svg>
+						</div>
+						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
+							__("Connect scanner")
+						}}</span>
+					</button>
+
 					<!-- View Shift -->
 					<button
 						type="button"
@@ -1697,6 +1726,7 @@ const emit = defineEmits([
 	"show-cash-collection",
 	"close-shift", // () - Close current shift
 	"show-shift-history", // () - Open shift history dialog
+	"pair-scanner", // () - Open the one-time scanner connection QR
 	// "create-sales-order", // () - Create Sales Order // Removed as per instruction
 ]);
 

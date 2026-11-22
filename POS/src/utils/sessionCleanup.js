@@ -1,3 +1,4 @@
+import { closeMobileScannerSession } from "@/composables/useScannerPairing";
 import { clearAllDrafts } from "@/utils/draftManager";
 import { clearAllOfflineReceiptPayloads } from "@/utils/offline/offlineReceiptCache";
 import { usePOSCartStore } from "@/stores/posCart";
@@ -27,6 +28,12 @@ const USER_KEYS = [
  * lock screen sign-out, or session expiry).
  */
 export async function cleanupUserSession() {
+	try {
+		await closeMobileScannerSession();
+	} catch (error) {
+		console.error("Failed to close mobile scanner session:", error);
+	}
+
 	// 1. Clear all user-specific localStorage keys
 	for (const key of USER_KEYS) {
 		localStorage.removeItem(key);
