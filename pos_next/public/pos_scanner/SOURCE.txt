@@ -1,4 +1,4 @@
 Built from https://github.com/evghenin/POSNext_scanner
-Ref: 97560650744eb29e8fcb67860a68507ada6c45eb (tag v0.1.0)
+Ref: 557284b0a1e87e9847d841faca3ea2ac6701afb5 (v0.1.2 / merge PR #1 OCR shelf-tag fix)
 Do not edit these assets by hand. Refresh with:
   ./scripts/publish-pos-scanner.sh /path/to/POSNext_scanner
