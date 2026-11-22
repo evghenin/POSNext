@@ -1289,3 +1289,5 @@
 "Open a shift before connecting a scanner.","Откройте смену перед подключением сканера.",""
 "Could not create a scanner connection.","Не удалось создать подключение сканера.",""
 "Could not register the POS session.","Не удалось зарегистрировать сессию кассы.",""
+"Scan this QR to connect the scanner. The code works once.","Отсканируйте QR, чтобы подключить сканер. Код одноразовый.",""
+"Could not draw the connection QR. Create a new code and try again.","Не удалось показать QR подключения. Создайте новый код и повторите.",""

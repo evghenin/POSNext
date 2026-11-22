@@ -33,3 +33,5 @@
 "Open a shift before connecting a scanner.","Deschideți un schimb înainte de a conecta scanerul.",""
 "Could not create a scanner connection.","Nu s-a putut crea conectarea scanerului.",""
 "Could not register the POS session.","Nu s-a putut înregistra sesiunea POS.",""
+"Scan this QR to connect the scanner. The code works once.","Scanați QR-ul ca să conectați scanerul. Codul e de unică folosință.",""
+"Could not draw the connection QR. Create a new code and try again.","QR-ul nu a putut fi afișat. Creați un cod nou și încercați din nou.",""

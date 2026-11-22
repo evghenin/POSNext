@@ -65,7 +65,7 @@ describe("PairScannerDialog", () => {
 		})
 	})
 
-	it("shows the one-time PIN and a QR of the challenge token", async () => {
+	it("shows only the QR of the challenge token", async () => {
 		const wrapper = mountDialog({
 			modelValue: false,
 			posProfile: "Main",
@@ -81,9 +81,8 @@ describe("PairScannerDialog", () => {
 		})
 
 		expect(wrapper.text()).toContain("Scanner connection")
-		expect(wrapper.get("[data-testid='pair-scanner-pin']").text()).toBe(
-			"123 456",
-		)
+		expect(wrapper.text()).not.toContain("123 456")
+		expect(wrapper.find("[data-testid='pair-scanner-pin']").exists()).toBe(false)
 		expect(wrapper.text()).toContain("Expires in")
 
 		const src = wrapper.get("[data-testid='pair-scanner-qr']").attributes("src")
@@ -102,9 +101,8 @@ describe("PairScannerDialog", () => {
 		await newCode.trigger("click")
 		await flushPromises()
 
-		expect(wrapper.get("[data-testid='pair-scanner-pin']").text()).toBe(
-			"654 321",
-		)
+		expect(wrapper.text()).not.toContain("654 321")
+		expect(wrapper.find("[data-testid='pair-scanner-pin']").exists()).toBe(false)
 		expect(
 			call.mock.calls.filter((args) =>
 				String(args[0]).endsWith("create_pairing_challenge"),
