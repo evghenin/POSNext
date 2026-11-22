@@ -301,6 +301,9 @@ pos_next_customer_after_insert = []
 
 website_route_rules = [
 	{"from_route": "/pos/<path:app_path>", "to_route": "pos"},
+	# Mobile scanner recognition prototype (isolated from /pos SPA)
+	{"from_route": "/pos-scanner", "to_route": "pos_scanner"},
+	{"from_route": "/pos-scanner/<path:app_path>", "to_route": "pos_scanner"},
 ]
 
 # /pos is not the Desk: expose optional-app install flags to the Vue app.
