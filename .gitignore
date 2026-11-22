@@ -10,7 +10,6 @@ __pycache__
 pos_next/public/pos/
 # Generated POS Vue www shell (mobile scanner UI lives in POSNext_scanner APK)
 pos_next/www/*
-yarn.lock
 package-lock.json
 CLAUDE.md
 
