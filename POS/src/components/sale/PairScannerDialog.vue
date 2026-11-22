@@ -4,9 +4,7 @@
 			<div class="flex flex-col items-center gap-4 text-center">
 				<p class="text-sm text-gray-600">
 					{{
-						__(
-							"Scan this QR to connect the scanner, or enter the PIN. The code works once.",
-						)
+						__("Scan this QR to connect the scanner. The code works once.")
 					}}
 				</p>
 				<p v-if="posProfile" class="text-xs text-gray-500">
@@ -66,19 +64,6 @@
 						</div>
 					</div>
 
-					<div>
-						<p class="text-xs font-semibold uppercase tracking-wide text-gray-500">
-							{{ __("PIN") }}
-						</p>
-						<p
-							class="mt-1 text-4xl font-bold tracking-[0.3em] text-gray-900"
-							data-testid="pair-scanner-pin"
-							:aria-label="__('Scanner connection PIN {0}', [pinLabel])"
-						>
-							{{ pinLabel }}
-						</p>
-					</div>
-
 					<p
 						class="text-sm"
 						:class="expired ? 'text-red-600 font-medium' : 'text-gray-600'"
@@ -117,11 +102,7 @@
 
 <script setup>
 import { useScannerPairing } from "@/composables/useScannerPairing"
-import {
-	formatPairingCountdown,
-	formatPairingPin,
-	renderPairingQr,
-} from "@/utils/pairingQr"
+import { formatPairingCountdown, renderPairingQr } from "@/utils/pairingQr"
 import { Button, Dialog } from "frappe-ui"
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 
@@ -153,7 +134,6 @@ const {
 	cancel,
 } = useScannerPairing()
 
-const pinLabel = computed(() => formatPairingPin(challenge.value?.pin))
 const countdownLabel = computed(() => formatPairingCountdown(secondsLeft.value))
 const expired = computed(
 	() => Boolean(challenge.value) && !loading.value && secondsLeft.value <= 0,
@@ -171,7 +151,7 @@ async function refreshQr(payload) {
 	} catch {
 		if (ticket !== qrTicket) return
 		qrDrawError.value = __(
-			"Could not draw the connection QR. Enter the PIN on the scanner.",
+			"Could not draw the connection QR. Create a new code and try again.",
 		)
 	}
 }

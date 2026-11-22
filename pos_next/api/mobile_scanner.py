@@ -61,6 +61,7 @@ from pos_next.mobile_scanner.crypto import (
 	pin_alphabet_ok,
 	secrets_equal,
 )
+from pos_next.mobile_scanner.item_lookup import found_payload, not_found_payload
 from pos_next.mobile_scanner.payload import payload_hash, payloads_match
 from pos_next.mobile_scanner.permissions import (
 	assert_opening_shift,
@@ -865,6 +866,149 @@ def get_session_status(link_token: str):
 		"device_id": device.device_id,
 		"session": _public_session(session),
 	}
+
+
+@frappe.whitelist(allow_guest=True)
+def lookup_item(link_token: str, code: str):
+	"""Look up a barcode or item code (SKU/NSU/SRV) for the paired till.
+
+	Guest may call this. The link_token is the credential. Company, warehouse,
+	and price list come from the paired POS session, not from the phone.
+
+	Found::
+
+	    {
+	      "found": true,
+	      "code": "SKU00012",
+	      "item_code": "SKU00012",
+	      "item_name": "Prija",
+	      "image": "/files/prija.jpg",
+	      "stock_uom": "Nos",
+	      "price": 25.0,
+	      "currency": "MDL",
+	      "uoms": [
+	        {"uom": "Nos", "conversion_factor": 1.0},
+	        {"uom": "Box", "conversion_factor": 12.0}
+	      ],
+	      "matched_by": "item_code",
+	      "barcode_uom": null
+	    }
+
+	``price`` is the rate for one base unit (``stock_uom``). ``conversion_factor``
+	is how many base units one of that UOM contains. ``price`` is null when the
+	price list has no base-unit rate.
+
+	Missing or not sellable::
+
+	    {"found": false, "code": "SKU99999", "reason": "not_found"}
+	    {"found": false, "code": "SKU00001", "reason": "not_for_sale"}
+	"""
+	code = cstr(code).strip()
+	if not code:
+		frappe.throw(_("code is required"), frappe.ValidationError)
+
+	_device, session = _resolve_link_token(link_token)
+	price_list, currency = _profile_price_list(session.pos_profile)
+	match = _match_scanner_code(code, session.pos_profile)
+	if not match:
+		return not_found_payload(code)
+
+	item = frappe.db.get_value(
+		"Item",
+		match["item_code"],
+		["name", "item_name", "image", "stock_uom", "disabled", "is_sales_item"],
+		as_dict=True,
+	)
+	if not item or cint(item.disabled) or not cint(item.is_sales_item):
+		return not_found_payload(code, reason="not_for_sale")
+
+	from pos_next.api.items import _fetch_item_uom_prices
+
+	conversions = frappe.get_all(
+		"UOM Conversion Detail",
+		filters={"parent": item.name},
+		fields=["uom", "conversion_factor"],
+		limit_page_length=0,
+	)
+	return found_payload(
+		code=code,
+		item_code=item.name,
+		item_name=item.item_name,
+		image=item.image,
+		stock_uom=item.stock_uom,
+		uom_prices=_fetch_item_uom_prices(item.name, price_list),
+		conversions=conversions,
+		currency=currency,
+		matched_by=match["matched_by"],
+		barcode_uom=match.get("barcode_uom"),
+	)
+
+
+def _profile_price_list(pos_profile: str) -> tuple[str, str | None]:
+	row = frappe.db.get_value(
+		"POS Profile",
+		pos_profile,
+		["selling_price_list", "currency"],
+		as_dict=True,
+	)
+	if not row or not row.selling_price_list:
+		frappe.throw(
+			_("Selling Price List is not set on POS Profile {0}").format(pos_profile),
+			frappe.ValidationError,
+		)
+	return row.selling_price_list, row.currency
+
+
+def _match_scanner_code(code: str, pos_profile: str) -> dict | None:
+	"""Barcode, then item code, then the same checks on an uppercased code."""
+	hit = _barcode_match(code) or _item_code_match(code)
+	if hit:
+		return hit
+	upper = code.upper()
+	if upper != code:
+		hit = _item_code_match(upper) or _barcode_match(upper)
+		if hit:
+			return hit
+	resolved = _resolved_barcode_value(code, pos_profile)
+	if resolved and resolved != code:
+		return _barcode_match(resolved) or _item_code_match(resolved)
+	return None
+
+
+def _barcode_match(code: str) -> dict | None:
+	row = frappe.db.get_value(
+		"Item Barcode",
+		{"barcode": code},
+		["parent", "uom"],
+		as_dict=True,
+	)
+	if not row or not row.parent:
+		return None
+	return {
+		"item_code": row.parent,
+		"matched_by": "barcode",
+		"barcode_uom": row.uom or None,
+	}
+
+
+def _item_code_match(code: str) -> dict | None:
+	name = frappe.db.get_value("Item", {"name": code}, "name")
+	if not name:
+		return None
+	return {"item_code": name, "matched_by": "item_code", "barcode_uom": None}
+
+
+def _resolved_barcode_value(code: str, pos_profile: str) -> str | None:
+	"""Weighted/priced barcode item key, when that optional app is installed."""
+	try:
+		from pos_next.services.barcode import resolve_barcode
+
+		resolved = resolve_barcode(code, pos_profile)
+	except Exception:
+		return None
+	if not resolved:
+		return None
+	return cstr(resolved.get("item_barcode")).strip() or None
 
 
 # ---------------------------------------------------------------------------

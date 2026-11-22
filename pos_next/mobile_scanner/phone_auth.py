@@ -17,6 +17,7 @@ PHONE_METHODS = (
 	"disconnect_self",
 	"get_cart_snapshot",
 	"get_session_status",
+	"lookup_item",
 	"enqueue_command",
 	"enqueue_commands",
 	"get_command_status",
