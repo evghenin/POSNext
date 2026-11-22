@@ -38,6 +38,26 @@
 			>
 				<template #menu-items>
 					<button
+						v-if="canAccessShiftActions"
+						@click="uiStore.showPairScannerDialog = true"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-teal-50 flex items-center gap-3 transition-colors"
+					>
+						<svg
+							class="w-5 h-5 text-teal-600"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+							/>
+						</svg>
+						<span>{{ __("Pair scanner") }}</span>
+					</button>
+					<button
 						v-if="shiftStore.hasOpenShift"
 						@click="uiStore.showOpenShiftDialog = true"
 						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
@@ -478,6 +498,7 @@
 								@show-cash-collection="openCashMovement('withdrawal')"
 								@close-shift="handleCloseShift"
 								@show-shift-history="navigateToShiftHistory"
+								@pair-scanner="uiStore.showPairScannerDialog = true"
 							/>
 						</div>
 					</keep-alive>
@@ -559,6 +580,12 @@
 					</Button>
 				</div>
 			</div>
+
+			<PairScannerDialog
+				v-model="uiStore.showPairScannerDialog"
+				:pos-profile="shiftStore.profileName"
+				:pos-opening-shift="shiftStore.currentShift?.name"
+			/>
 
 			<!-- Payment Dialog -->
 			<PaymentDialog
@@ -1157,6 +1184,7 @@ import ItemSelectionDialog from "@/components/sale/ItemSelectionDialog.vue";
 import ItemsSelector from "@/components/sale/ItemsSelector.vue";
 import OffersDialog from "@/components/sale/OffersDialog.vue";
 import OfflineInvoicesDialog from "@/components/sale/OfflineInvoicesDialog.vue";
+import PairScannerDialog from "@/components/sale/PairScannerDialog.vue";
 import PaymentDialog from "@/components/sale/PaymentDialog.vue";
 import TerminalWaitOverlay from "@/components/sale/TerminalWaitOverlay.vue";
 import ProductManagement from "@/components/sale/ProductManagement.vue";
@@ -1175,6 +1203,7 @@ import { useLocale } from "@/composables/useLocale";
 import { session } from "@/data/session";
 import { useUserData } from "@/data/user";
 import { parseError } from "@/utils/errorHandler";
+import { closeMobileScannerSession } from "@/composables/useScannerPairing";
 import { cleanupUserSession } from "@/utils/sessionCleanup";
 import { offlineWorker } from "@/utils/offline/workerClient";
 import { deductCachedBatchQty } from "@/utils/offline/items";
@@ -2074,6 +2103,8 @@ async function handleShiftOpened() {
 
 async function handleShiftClosed() {
 	uiStore.showCloseShiftDialog = false;
+	uiStore.showPairScannerDialog = false;
+	await closeMobileScannerSession();
 	showSuccess(__("Shift closed successfully"));
 
 	// Check if logout should happen after closing shift

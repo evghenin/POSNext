@@ -28,6 +28,7 @@ export const usePOSUIStore = defineStore("posUI", () => {
 	const { isOpen: showLogoutDialog } = useDialog("logout");
 	const { isOpen: showItemSelectionDialog } = useDialog("itemSelection");
 	const { isOpen: showErrorDialog } = useDialog("invoiceError");
+	const { isOpen: showPairScannerDialog } = useDialog("pairScanner");
 
 	// Global dialog state
 	const { isAnyDialogOpen } = useDialogState();
@@ -161,6 +162,7 @@ export const usePOSUIStore = defineStore("posUI", () => {
 		showLogoutDialog.value = false;
 		showItemSelectionDialog.value = false;
 		showErrorDialog.value = false;
+		showPairScannerDialog.value = false;
 		clearError();
 		lastOfflinePrintDoc.value = null;
 	}
@@ -186,6 +188,7 @@ export const usePOSUIStore = defineStore("posUI", () => {
 		showLogoutDialog,
 		showItemSelectionDialog,
 		showErrorDialog,
+		showPairScannerDialog,
 		isAnyDialogOpen,
 		errorDialogTitle,
 		errorDialogMessage,
