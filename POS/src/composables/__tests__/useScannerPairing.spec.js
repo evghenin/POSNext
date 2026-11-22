@@ -85,7 +85,7 @@ describe("useScannerPairing", () => {
 		const pairing = useScannerPairing({ storage: memoryStorage() })
 		await pairing.issueChallenge({ posProfile: "" })
 		expect(call).not.toHaveBeenCalled()
-		expect(pairing.errorMessage.value).toMatch(/Open a shift/)
+		expect(pairing.errorMessage.value).toMatch(/Open a shift before connecting/)
 	})
 
 	it("surfaces an API failure without a QR payload", async () => {

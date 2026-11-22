@@ -75,10 +75,12 @@ describe("PairScannerDialog", () => {
 		await wrapper.setProps({ modelValue: true })
 		await flushPromises()
 		await vi.waitFor(() => {
-			expect(wrapper.find("[data-testid='pair-scanner-qr']").exists()).toBe(true)
+			expect(wrapper.find("[data-testid='pair-scanner-qr']").exists()).toBe(
+				true,
+			)
 		})
 
-		expect(wrapper.text()).toContain("Pair scanner")
+		expect(wrapper.text()).toContain("Scanner connection")
 		expect(wrapper.get("[data-testid='pair-scanner-pin']").text()).toBe(
 			"123 456",
 		)

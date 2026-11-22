@@ -1,11 +1,11 @@
 <template>
-	<Dialog v-model="show" :options="{ title: __('Pair scanner'), size: 'md' }">
+	<Dialog v-model="show" :options="{ title: __('Scanner connection'), size: 'md' }">
 		<template #body-content>
 			<div class="flex flex-col items-center gap-4 text-center">
 				<p class="text-sm text-gray-600">
 					{{
 						__(
-							"Scan this code with the scanner, or enter the PIN. The code works once.",
+							"Scan this QR to connect the scanner, or enter the PIN. The code works once.",
 						)
 					}}
 				</p>
@@ -21,7 +21,7 @@
 					<div
 						class="w-8 h-8 rounded-full border-2 border-teal-200 border-t-teal-600 animate-spin"
 					></div>
-					<p class="text-sm text-gray-600">{{ __("Creating pairing code…") }}</p>
+					<p class="text-sm text-gray-600">{{ __("Creating scanner connection…") }}</p>
 				</div>
 
 				<div
@@ -45,7 +45,7 @@
 								height="240"
 								class="block w-60 h-60"
 								data-testid="pair-scanner-qr"
-								:alt="__('Pairing QR code')"
+								:alt="__('Scanner connection QR')"
 							/>
 							<div
 								v-else
@@ -73,7 +73,7 @@
 						<p
 							class="mt-1 text-4xl font-bold tracking-[0.3em] text-gray-900"
 							data-testid="pair-scanner-pin"
-							:aria-label="__('Pairing PIN {0}', [pinLabel])"
+							:aria-label="__('Scanner connection PIN {0}', [pinLabel])"
 						>
 							{{ pinLabel }}
 						</p>
@@ -86,7 +86,7 @@
 					>
 						{{
 							expired
-								? __("This code has expired. Create a new one to pair.")
+								? __("This code has expired. Create a new one to connect.")
 								: __("Expires in {0}", [countdownLabel])
 						}}
 					</p>
@@ -171,7 +171,7 @@ async function refreshQr(payload) {
 	} catch {
 		if (ticket !== qrTicket) return
 		qrDrawError.value = __(
-			"Could not draw the pairing QR. Enter the PIN on the scanner.",
+			"Could not draw the connection QR. Enter the PIN on the scanner.",
 		)
 	}
 }

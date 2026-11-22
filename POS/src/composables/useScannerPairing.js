@@ -73,7 +73,7 @@ export function useScannerPairing(options = {}) {
 
 		if (!posProfile) {
 			loading.value = false
-			errorMessage.value = __("Open a shift before pairing a scanner.")
+			errorMessage.value = __("Open a shift before connecting a scanner.")
 			return
 		}
 
@@ -127,7 +127,8 @@ export function useScannerPairing(options = {}) {
 			} catch {
 				message = error?.message || ""
 			}
-			errorMessage.value = message || __("Could not create a pairing code.")
+			errorMessage.value =
+				message || __("Could not create a scanner connection.")
 			challenge.value = null
 		} finally {
 			if (ticket === generation) loading.value = false

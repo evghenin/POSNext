@@ -738,12 +738,12 @@
 
 				<!-- Quick Actions Grid -->
 				<div class="grid grid-cols-2 gap-2 sm:gap-2.5 w-full max-w-lg">
-					<!-- Pair scanner -->
+					<!-- Connect scanner -->
 					<button
 						type="button"
 						@click="$emit('pair-scanner')"
 						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-teal-300 hover:bg-teal-50 active:bg-teal-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
-						:title="__('Pair a mobile scanner')"
+						:title="__('Connect a mobile scanner')"
 					>
 						<div
 							class="w-9 h-9 sm:w-10 sm:h-10 bg-teal-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-teal-100 transition-colors"
@@ -763,7 +763,7 @@
 							</svg>
 						</div>
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
-							__("Pair scanner")
+							__("Connect scanner")
 						}}</span>
 					</button>
 
@@ -1726,7 +1726,7 @@ const emit = defineEmits([
 	"show-cash-collection",
 	"close-shift", // () - Close current shift
 	"show-shift-history", // () - Open shift history dialog
-	"pair-scanner", // () - Open the one-time scanner pairing QR
+	"pair-scanner", // () - Open the one-time scanner connection QR
 	// "create-sales-order", // () - Create Sales Order // Removed as per instruction
 ]);
 
