@@ -247,6 +247,28 @@ bench --site [your-site-name] clear-cache
 bench restart
 ```
 
+### Mobile Scanner (`/pos-scanner`)
+
+The phone PWA is served from this app at **`/pos-scanner`**. Vue/Android **source** lives in a separate repo ([evghenin/POSNext_scanner](https://github.com/evghenin/POSNext_scanner)); POSNext ships only the Frappe www page, website routes, and **committed** built static assets under `pos_next/public/pos_scanner/` (~2 MB).
+
+After `git pull` of POSNext on an ERPNext site:
+
+```bash
+bench --site [your-site-name] migrate
+bench --site [your-site-name] clear-cache
+# optional if public assets did not symlink: bench build --app pos_next
+bench restart   # production
+```
+
+Then open `https://[your-site]/pos-scanner`.
+
+To refresh published assets from a local scanner clone (maintainers):
+
+```bash
+./scripts/publish-pos-scanner.sh /path/to/POSNext_scanner
+# commit updated pos_next/www/pos_scanner.* and pos_next/public/pos_scanner/
+```
+
 ## 🎯 Quick Start
 
 ### 1. Setup POS Profile
