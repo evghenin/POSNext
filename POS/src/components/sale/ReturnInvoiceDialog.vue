@@ -824,20 +824,17 @@
 
 					<!-- Regular Payment Methods (only for non-credit sales and not adding to customer credit) -->
 					<div v-if="!isOriginalCreditSale && !addToCustomerCredit">
-						<div
-							class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 gap-2"
-						>
+						<div class="mb-3">
 							<label class="text-sm font-medium text-gray-700 text-start">
 								{{ __("Refund Payment Methods") }}
 							</label>
-							<Button
-								size="sm"
-								variant="subtle"
-								@click="addPaymentRow"
-								class="self-end sm:self-auto"
-							>
-								<span class="text-xs">{{ __("+ Add Payment") }}</span>
-							</Button>
+							<p class="text-xs text-gray-500 mt-1 text-start">
+								{{
+									__(
+										"Refund uses the same methods as the original receipt, up to the amount paid with each method."
+									)
+								}}
+							</p>
 						</div>
 
 						<div class="flex flex-col gap-3">
@@ -861,28 +858,19 @@
 										</div>
 										<select
 											v-model="payment.mode_of_payment"
+											disabled
 											:style="paymentSelectStyle"
-											class="payment-select flex-1 py-2.5 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white appearance-none cursor-pointer hover:border-gray-400 transition-colors ps-3 pe-10"
+											class="payment-select flex-1 py-2.5 border border-gray-300 rounded-lg text-sm font-medium bg-gray-50 appearance-none ps-3 pe-10"
 										>
-											<option value="">{{ __("Select method...") }}</option>
-											<option
-												v-for="method in paymentMethods"
-												:key="method.mode_of_payment"
-												:value="method.mode_of_payment"
-											>
-												{{ method.mode_of_payment }}
+											<option :value="payment.mode_of_payment">
+												{{ payment.mode_of_payment }}
 											</option>
 										</select>
 									</div>
 									<!-- Amount with Counter -->
 									<div class="flex items-center gap-2 flex-1">
 										<button
-											@click="
-												payment.amount = Math.max(
-													0,
-													(payment.amount || 0) - 1
-												)
-											"
+											@click="setRefundAmount(payment, (payment.amount || 0) - 1)"
 											type="button"
 											class="flex-shrink-0 w-10 h-10 sm:w-9 sm:h-9 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 font-bold text-xl transition-colors flex items-center justify-center border border-gray-300"
 										>
@@ -891,8 +879,10 @@
 										<input
 											:value="payment.amount"
 											@input="
-												payment.amount =
+												setRefundAmount(
+													payment,
 													parseFloat($event.target.value) || 0
+												)
 											"
 											@focus="$event.target.select()"
 											type="text"
@@ -901,32 +891,14 @@
 											class="flex-1 min-w-0 px-3 py-2.5 text-base font-bold text-center border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
 										/>
 										<button
-											@click="payment.amount = (payment.amount || 0) + 1"
+											@click="setRefundAmount(payment, (payment.amount || 0) + 1)"
 											type="button"
 											class="flex-shrink-0 w-10 h-10 sm:w-9 sm:h-9 rounded-lg bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 font-bold text-xl transition-colors flex items-center justify-center border border-gray-300"
 										>
 											+
 										</button>
 									</div>
-									<!-- Delete Button -->
-									<button
-										v-if="refundPayments.length > 1"
-										@click="removePaymentRow(index)"
-										class="hidden sm:flex flex-shrink-0 w-9 h-9 items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 active:bg-red-100 rounded-lg transition-colors"
-										:title="__('Remove')"
-									>
-										<FeatherIcon name="trash-2" class="w-4 h-4" />
-									</button>
 								</div>
-								<!-- Mobile Delete Button -->
-								<button
-									v-if="refundPayments.length > 1"
-									@click="removePaymentRow(index)"
-									class="sm:hidden mt-2 w-full py-2 text-sm text-red-600 hover:bg-red-50 active:bg-red-100 rounded-lg transition-colors flex items-center justify-center gap-1"
-								>
-									<FeatherIcon name="trash-2" class="w-4 h-4" />
-									{{ __("Remove") }}
-								</button>
 							</div>
 						</div>
 
@@ -1737,13 +1709,9 @@ watch(normalizedSearchTerm, (searchTerm) => {
 });
 
 // Auto-populate payment amount when return total changes (single payment only)
-watch(returnTotal, (newTotal) => {
-	if (!returnModal.visible || !showDialog.value || isOriginalCreditSale.value) return;
-	if (refundPayments.value.length !== 1 || newTotal <= 0) return;
-
-	refundPayments.value[0].amount = isPartiallyPaid.value
-		? roundCurrency(maxRefundableAmount.value)
-		: newTotal;
+watch(returnTotal, () => {
+	if (!returnModal.visible || isOriginalCreditSale.value) return;
+	syncRefundAmounts();
 });
 
 // Methods
@@ -1801,12 +1769,27 @@ function validateSelectedItems() {
 	return false;
 }
 
-function addPaymentRow() {
-	refundPayments.value.push({ mode_of_payment: "", amount: 0 });
+function setRefundAmount(payment, value) {
+	const max = Number(payment.original_amount) || 0;
+	const next = Number.isFinite(Number(value)) ? Number(value) : 0;
+	payment.amount = roundCurrency(Math.min(max, Math.max(0, next)));
 }
 
-function removePaymentRow(paymentIndex) {
-	refundPayments.value.splice(paymentIndex, 1);
+function syncRefundAmounts() {
+	const rows = refundPayments.value;
+	if (!rows.length || isOriginalCreditSale.value) return;
+	const originalSum = rows.reduce((sum, row) => sum + (Number(row.original_amount) || 0), 0);
+	const target = isPartiallyPaid.value ? maxRefundableAmount.value : returnTotal.value;
+	if (originalSum <= 0 || target < 0) return;
+	let allocated = 0;
+	rows.forEach((row, index) => {
+		const share =
+			index === rows.length - 1
+				? roundCurrency(target - allocated)
+				: roundCurrency(target * ((Number(row.original_amount) || 0) / originalSum));
+		row.amount = roundCurrency(Math.min(Number(row.original_amount) || 0, Math.max(0, share)));
+		allocated += row.amount;
+	});
 }
 
 /**
@@ -1847,13 +1830,19 @@ function initializePaymentsFromInvoice() {
 			? new Set(paymentMethods.value.map((m) => m.mode_of_payment))
 			: null;
 
-		refundPayments.value = invoicePayments.map((payment) => ({
-			mode_of_payment:
+		refundPayments.value = invoicePayments.map((payment) => {
+			const mode =
 				currentModes && !currentModes.has(payment.mode_of_payment)
 					? defaultMode
-					: payment.mode_of_payment,
-			amount: isPartiallyPaid.value ? 0 : Math.abs(payment.amount),
-		}));
+					: payment.mode_of_payment;
+			const originalAmount = Math.abs(payment.amount) || 0;
+			return {
+				mode_of_payment: mode,
+				original_amount: originalAmount,
+				amount: originalAmount,
+			};
+		});
+		syncRefundAmounts();
 	} else {
 		refundPayments.value = [
 			{

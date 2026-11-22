@@ -821,6 +821,177 @@ def validate_cart_items(items, pos_profile=None):
 	return errors
 
 
+def _payment_rows(invoice):
+	rows = invoice.get("payments") if invoice else None
+	return list(rows or [])
+
+
+def _refund_amounts_by_mode(invoice):
+	by_mode = {}
+	for payment in _payment_rows(invoice):
+		mode = payment.get("mode_of_payment")
+		amount = abs(flt(payment.get("amount")))
+		if not mode or amount <= 0:
+			continue
+		by_mode[mode] = by_mode.get(mode, 0) + amount
+	return by_mode
+
+
+def _cash_modes(modes):
+	if not modes:
+		return set()
+	rows = frappe.get_all(
+		"Mode of Payment",
+		filters={"name": ["in", list(modes)]},
+		fields=["name", "type"],
+	)
+	return {row.name for row in rows if row.type == "Cash"}
+
+
+def cash_refund_amount(invoice):
+	"""Absolute cash-type amount on a return payload or invoice."""
+	by_mode = _refund_amounts_by_mode(invoice)
+	cash_modes = _cash_modes(by_mode)
+	return flt(sum(amount for mode, amount in by_mode.items() if mode in cash_modes))
+
+
+def get_shift_cash_balance(pos_opening_shift):
+	"""Cash still in the drawer for an open shift (opening + takings − expenses)."""
+	if not pos_opening_shift:
+		return 0
+
+	opening_rows = frappe.get_all(
+		"POS Opening Shift Detail",
+		filters={"parent": pos_opening_shift},
+		fields=["mode_of_payment", "amount"],
+	)
+	payment_rows = frappe.db.sql(
+		"""
+		SELECT sip.mode_of_payment AS mode_of_payment, COALESCE(SUM(sip.amount), 0) AS amount
+		FROM `tabSales Invoice Payment` sip
+		INNER JOIN `tabSales Invoice` si ON si.name = sip.parent
+		WHERE si.posa_pos_opening_shift = %(shift)s
+		  AND si.docstatus = 1
+		GROUP BY sip.mode_of_payment
+		""",
+		{"shift": pos_opening_shift},
+		as_dict=True,
+	)
+	modes = {row.mode_of_payment for row in opening_rows if row.mode_of_payment}
+	modes.update(row.mode_of_payment for row in payment_rows if row.mode_of_payment)
+	cash_modes = _cash_modes(modes)
+	balance = flt(sum(flt(row.amount) for row in opening_rows if row.mode_of_payment in cash_modes))
+	balance += flt(sum(flt(row.amount) for row in payment_rows if row.mode_of_payment in cash_modes))
+
+	from pos_next.api.expenses import get_pos_expenses
+
+	for expense in get_pos_expenses(pos_opening_shift):
+		if expense.mode_of_payment in cash_modes:
+			balance -= flt(expense.amount)
+	return balance
+
+
+def validate_return_refund(invoice):
+	"""Refund tenders must repeat the original receipt, within the amounts still available.
+
+	Cash-type refunds also require enough cash in the current opening shift.
+	Skipped when the return is credited to the customer instead of paid out.
+	"""
+	if not cint(invoice.get("is_return")) or not invoice.get("return_against"):
+		return
+	flags = getattr(invoice, "flags", None)
+	if cint(invoice.get("add_to_customer_balance")) or (
+		flags and getattr(flags, "pos_next_add_to_customer_balance", 0)
+	):
+		return
+
+	requested = _refund_amounts_by_mode(invoice)
+	if not requested:
+		return
+
+	original_rows = frappe.get_all(
+		"Sales Invoice Payment",
+		filters={"parent": invoice.get("return_against")},
+		fields=["mode_of_payment", "amount"],
+	)
+	original = {}
+	for row in original_rows:
+		if not row.mode_of_payment:
+			continue
+		original[row.mode_of_payment] = original.get(row.mode_of_payment, 0) + abs(flt(row.amount))
+
+	prior_rows = frappe.db.sql(
+		"""
+		SELECT sip.mode_of_payment AS mode_of_payment, COALESCE(SUM(ABS(sip.amount)), 0) AS amount
+		FROM `tabSales Invoice Payment` sip
+		INNER JOIN `tabSales Invoice` si ON si.name = sip.parent
+		WHERE si.return_against = %(invoice)s
+		  AND si.is_return = 1
+		  AND si.docstatus = 1
+		GROUP BY sip.mode_of_payment
+		""",
+		{"invoice": invoice.get("return_against")},
+		as_dict=True,
+	)
+	prior = {row.mode_of_payment: flt(row.amount) for row in prior_rows}
+	remaining = {mode: max(0, flt(amount) - prior.get(mode, 0)) for mode, amount in original.items()}
+
+	for mode, amount in requested.items():
+		if mode not in original:
+			frappe.throw(
+				_("Refund method {0} was not used to pay invoice {1}.").format(
+					mode, invoice.get("return_against")
+				),
+				title=_("Invalid Refund"),
+			)
+		if amount > remaining.get(mode, 0) + 0.05:
+			frappe.throw(
+				_("Refund by {0} cannot exceed {1} still available from the original payment.").format(
+					mode, flt(remaining.get(mode, 0))
+				),
+				title=_("Invalid Refund"),
+			)
+
+	return_total = abs(flt(invoice.get("grand_total")))
+	if return_total:
+		source = frappe.db.get_value(
+			"Sales Invoice",
+			invoice.get("return_against"),
+			["grand_total", "outstanding_amount"],
+			as_dict=True,
+		)
+		source_total = abs(flt(source.grand_total)) or return_total
+		if abs(flt(source.outstanding_amount)) < 0.05:
+			expected = return_total
+		else:
+			expected = min(return_total, sum(remaining.values()) * return_total / source_total)
+		if abs(sum(requested.values()) - expected) > 0.05:
+			frappe.throw(
+				_("Refund payments must equal {0}.").format(flt(expected)),
+				title=_("Invalid Refund"),
+			)
+		ratio = return_total / source_total
+		for mode, amount in requested.items():
+			limit = min(remaining.get(mode, 0), original.get(mode, 0) * ratio)
+			if amount > limit + 0.05:
+				frappe.throw(
+					_("Refund by {0} cannot exceed {1} for this return.").format(mode, flt(limit)),
+					title=_("Invalid Refund"),
+				)
+
+	cash_amount = cash_refund_amount(invoice)
+	if cash_amount:
+		shift = invoice.get("posa_pos_opening_shift")
+		available = get_shift_cash_balance(shift)
+		if cash_amount > available + 0.05:
+			frappe.throw(
+				_("Not enough cash in the current shift to refund {0}. Available: {1}.").format(
+					flt(cash_amount), flt(available)
+				),
+				title=_("Insufficient Cash"),
+			)
+
+
 @frappe.whitelist()
 def validate_return_items(original_invoice_name, return_items, doctype="Sales Invoice"):
 	"""Ensure that return items do not exceed the quantity from the original invoice.
@@ -1670,6 +1841,12 @@ def submit_invoice(invoice=None, data=None):
 			_set_payment_accounts(invoice_doc.payments, invoice_doc.company)
 			_validate_customer_for_receivable_payments(invoice_doc)
 			_validate_payment_account_not_debit_to(invoice_doc)
+
+		if doctype == "Sales Invoice" and invoice_doc.get("is_return") and invoice_doc.get("return_against"):
+			if cint(invoice.get("add_to_customer_balance")):
+				invoice_doc.flags.pos_next_add_to_customer_balance = 1
+			invoice_doc.calculate_taxes_and_totals()
+			validate_return_refund(invoice_doc)
 
 		# Resolve item-level + invoice-level sales persons into sales_team.
 		# Prefer cashier team from submit ``data``; offline uses invoice.sales_team
