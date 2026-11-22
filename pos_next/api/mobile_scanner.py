@@ -8,7 +8,10 @@ See docs/backend-pairing-design.md (project store) and the fork audit for design
 Security invariants:
 - Pairing binds to a POS *session instance* (tab), not only POS Profile.
 - Callers cannot invent company/warehouse/user — those come from the registered session.
-- PIN is one-time + short TTL; after redeem a separate link_token is issued.
+- PIN/QR is one-time + short TTL; after redeem a separate link_token is issued.
+- The phone does not log in. Redeem accepts Guest plus the PIN or qr_token.
+  Later phone calls accept Guest plus that link_token (bearer credential).
+- Till APIs still require the cashier session.
 - Commands are idempotent on operation_id; same-id different payload is rejected.
 - Server accept ≠ applied: POS must ACK via ack_command.
 """
@@ -65,10 +68,26 @@ from pos_next.mobile_scanner.permissions import (
 	assert_session_cashier,
 	get_profile_context,
 	require_cashier_or_manager,
-	require_logged_in,
-	require_mobile_scanner,
+)
+from pos_next.mobile_scanner.phone_auth import (
+	link_token_user_allowed,
+	phone_actor,
 )
 from pos_next.mobile_scanner.realtime import publish_command
+
+
+def _get_doc(doctype: str, name: str):
+	"""Load a DocType row without a User permission check.
+
+	Phone calls run as Guest. Permission is the PIN/QR or link_token, checked
+	by the caller before this load.
+	"""
+	previous = bool(getattr(frappe.flags, "ignore_permissions", False))
+	frappe.flags.ignore_permissions = True
+	try:
+		return frappe.get_doc(doctype, name)
+	finally:
+		frappe.flags.ignore_permissions = previous
 
 
 def _pepper() -> str:
@@ -487,7 +506,7 @@ def _revoke_open_challenges(session_instance_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def redeem_pairing(
 	device_id: str,
 	pin: str | None = None,
@@ -497,10 +516,10 @@ def redeem_pairing(
 ):
 	"""Redeem a pairing PIN or QR token. Issues a time-limited link_token.
 
-	Requires an authenticated ERPNext user with mobile scanner rights.
-	The six-digit PIN does not replace login.
+	Guest may call this. The one-time PIN or qr_token is the credential.
+	The phone does not send an ERPNext user, password, or API key.
 	"""
-	user = require_mobile_scanner()
+	user = phone_actor(getattr(frappe.session, "user", None))
 	device_id = cstr(device_id).strip()
 	pin = cstr(pin).strip() if pin else ""
 	qr_token = cstr(qr_token).strip() if qr_token else ""
@@ -522,7 +541,7 @@ def redeem_pairing(
 		)
 		frappe.throw(_("Invalid or expired pairing code"), frappe.ValidationError)
 
-	doc = frappe.get_doc(CHALLENGE_DOCTYPE, challenge.name)
+	doc = _get_doc(CHALLENGE_DOCTYPE, challenge.name)
 	# Lock row
 	frappe.db.get_value(CHALLENGE_DOCTYPE, doc.name, "name", for_update=True)
 	doc.reload()
@@ -568,10 +587,8 @@ def redeem_pairing(
 	if session.status == SESSION_CLOSED:
 		frappe.throw(_("POS session is closed"), frappe.ValidationError)
 
-	# Mobile user may not invent till context — only bind to this session's profile.
-	# Soft check: if they are restricted to profiles via POS Profile User, enforce it.
-	# Floor scanners often are not on the profile user table; allow role-based access
-	# but never let them pick a different profile than the challenge's.
+	# Till context comes only from the challenge's session. The phone cannot
+	# choose a profile. Guest is stored when the phone is not logged in.
 	now = now_datetime()
 	link_token = generate_token(32)
 	link_expires = now + timedelta(seconds=LINK_TOKEN_TTL_SECONDS)
@@ -710,11 +727,11 @@ def disconnect_device(session_instance_id: str, device_id: str):
 	return {"ok": True}
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def disconnect_self(link_token: str):
-	"""Mobile device disconnects itself."""
-	user = require_mobile_scanner()
+	"""Mobile device disconnects itself. Auth is the link_token."""
 	device, session = _resolve_link_token(link_token, touch=False)
+	user = device.mobile_user
 	_disconnect_device_rows(session.session_instance_id, device.device_id, reason="self_disconnect")
 	audit.record(
 		event_type="device_disconnected",
@@ -765,8 +782,11 @@ def _disconnect_all_devices(session_instance_id: str, reason: str) -> None:
 
 
 def _resolve_link_token(link_token: str, *, touch: bool = True) -> tuple[Any, dict]:
-	"""Validate link token → (device doc, session dict). Enforces mobile user match."""
-	user = require_logged_in()
+	"""Validate link token → (device doc, session dict).
+
+	Guest is allowed. The link_token is the bearer credential. A logged-in
+	user must own the token unless they are System Manager.
+	"""
 	link_token = cstr(link_token).strip()
 	if not link_token:
 		frappe.throw(_("link_token is required"), frappe.AuthenticationError)
@@ -790,7 +810,15 @@ def _resolve_link_token(link_token: str, *, touch: bool = True) -> tuple[Any, di
 	if not row:
 		frappe.throw(_("Invalid or revoked link token"), frappe.AuthenticationError)
 
-	if row.mobile_user != user and "System Manager" not in frappe.get_roles(user):
+	session_user = phone_actor(getattr(frappe.session, "user", None))
+	is_system_manager = False
+	if session_user != "Guest":
+		is_system_manager = "System Manager" in set(frappe.get_roles(session_user))
+	if not link_token_user_allowed(
+		session_user=session_user,
+		mobile_user=row.mobile_user,
+		is_system_manager=is_system_manager,
+	):
 		frappe.throw(_("Link token belongs to another user"), frappe.PermissionError)
 
 	if get_datetime(row.link_token_expires_at) < now_datetime():
@@ -801,7 +829,7 @@ def _resolve_link_token(link_token: str, *, touch: bool = True) -> tuple[Any, di
 	if session.status == SESSION_CLOSED:
 		frappe.throw(_("POS session is closed"), frappe.ValidationError)
 
-	device = frappe.get_doc(DEVICE_DOCTYPE, row.name)
+	device = _get_doc(DEVICE_DOCTYPE, row.name)
 	if touch:
 		device.last_seen = now_datetime()
 		device.flags.ignore_permissions = True
@@ -815,10 +843,9 @@ def _resolve_link_token(link_token: str, *, touch: bool = True) -> tuple[Any, di
 # ---------------------------------------------------------------------------
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_cart_snapshot(link_token: str):
 	"""Mobile reads the POS-published cart snapshot for reconnect/compare."""
-	require_mobile_scanner()
 	_device, session = _resolve_link_token(link_token)
 	snapshot = _parse_json(session.cart_snapshot, "cart_snapshot") or {"items": []}
 	return {
@@ -830,10 +857,9 @@ def get_cart_snapshot(link_token: str):
 	}
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_session_status(link_token: str):
 	"""Lightweight reachability / generation check for the mobile client."""
-	require_mobile_scanner()
 	device, session = _resolve_link_token(link_token)
 	return {
 		"device_id": device.device_id,
@@ -846,7 +872,7 @@ def get_session_status(link_token: str):
 # ---------------------------------------------------------------------------
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def enqueue_command(
 	link_token: str,
 	operation_id: str,
@@ -859,8 +885,7 @@ def enqueue_command(
 	created_at: str | None = None,
 	payload: str | dict | None = None,
 ):
-	"""Enqueue one command. Idempotent on operation_id."""
-	require_mobile_scanner()
+	"""Enqueue one command. Idempotent on operation_id. Auth is the link_token."""
 	device, session = _resolve_link_token(link_token)
 
 	operation_id = cstr(operation_id).strip()
@@ -930,11 +955,10 @@ def enqueue_command(
 	)
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def enqueue_commands(link_token: str, commands: str | list):
 	"""Enqueue a batch of commands. Each keeps its own operation_id; optional shared batch_id."""
-	require_mobile_scanner()
-	device, session = _resolve_link_token(link_token)
+	_device, session = _resolve_link_token(link_token)
 	items = _parse_json(commands, "commands")
 	if not isinstance(items, list) or not items:
 		frappe.throw(_("commands must be a non-empty list"), frappe.ValidationError)
@@ -1065,10 +1089,9 @@ def _upsert_command(
 	return {"duplicate": False, "command": _command_public(doc.as_dict())}
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_command_status(link_token: str, operation_id: str | None = None, batch_id: str | None = None):
 	"""Mobile polls command status by operation_id and/or batch_id."""
-	require_mobile_scanner()
 	device, session = _resolve_link_token(link_token)
 	operation_id = cstr(operation_id).strip() if operation_id else ""
 	batch_id = cstr(batch_id).strip() if batch_id else ""
