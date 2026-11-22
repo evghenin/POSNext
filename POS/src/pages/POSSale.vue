@@ -1203,7 +1203,11 @@ import { useLocale } from "@/composables/useLocale";
 import { session } from "@/data/session";
 import { useUserData } from "@/data/user";
 import { parseError } from "@/utils/errorHandler";
-import { closeMobileScannerSession } from "@/composables/useScannerPairing";
+import {
+	closeMobileScannerSession,
+	startScannerApplyLoop,
+	stopScannerApplyLoop,
+} from "@/composables/useScannerPairing";
 import { cleanupUserSession } from "@/utils/sessionCleanup";
 import { offlineWorker } from "@/utils/offline/workerClient";
 import { deductCachedBatchQty } from "@/utils/offline/items";
@@ -1450,8 +1454,14 @@ watch(
 	},
 );
 
+function syncScannerApplyLoop() {
+	if (shiftStore.hasOpenShift) startScannerApplyLoop();
+	else stopScannerApplyLoop();
+}
+
 onMounted(async () => {
 	loadCashMovementState();
+	syncScannerApplyLoop();
 	// Window resize listeners (passive for better performance)
 	const handleResize = () => {
 		uiStore.setWindowWidth(window.innerWidth);
@@ -1747,6 +1757,7 @@ onMounted(async () => {
 watch(
 	() => shiftStore.hasOpenShift,
 	(value) => {
+		syncScannerApplyLoop();
 		if (value && typeof window !== "undefined") {
 			updateLayoutBounds();
 			return;
@@ -1887,6 +1898,7 @@ watch(
 );
 
 onUnmounted(() => {
+	stopScannerApplyLoop();
 	window.removeEventListener("resize", () => {
 		uiStore.setWindowWidth(window.innerWidth);
 		updateLayoutBounds();
@@ -2104,6 +2116,7 @@ async function handleShiftOpened() {
 async function handleShiftClosed() {
 	uiStore.showCloseShiftDialog = false;
 	uiStore.showPairScannerDialog = false;
+	stopScannerApplyLoop();
 	await closeMobileScannerSession();
 	showSuccess(__("Shift closed successfully"));
 
