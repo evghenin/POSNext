@@ -1,0 +1,191 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-21 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "session_instance_id",
+  "client_instance_id",
+  "status",
+  "column_break_ids",
+  "pos_profile",
+  "pos_opening_shift",
+  "cashier_user",
+  "section_context",
+  "company",
+  "warehouse",
+  "column_break_ctx",
+  "cart_generation",
+  "payment_busy",
+  "last_heartbeat",
+  "section_snapshot",
+  "cart_snapshot",
+  "section_meta",
+  "closed_at"
+ ],
+ "fields": [
+  {
+   "fieldname": "session_instance_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Session Instance ID",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "client_instance_id",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Client Instance ID",
+   "reqd": 1
+  },
+  {
+   "default": "Active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Active\nDisconnected\nClosed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_ids",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "POS Profile",
+   "options": "POS Profile",
+   "reqd": 1
+  },
+  {
+   "fieldname": "pos_opening_shift",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "POS Opening Shift",
+   "options": "POS Opening Shift"
+  },
+  {
+   "fieldname": "cashier_user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Cashier User",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_context",
+   "fieldtype": "Section Break",
+   "label": "Till Context"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "label": "Warehouse",
+   "options": "Warehouse",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ctx",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cart_generation",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Cart Generation"
+  },
+  {
+   "default": "0",
+   "fieldname": "payment_busy",
+   "fieldtype": "Check",
+   "label": "Payment Busy"
+  },
+  {
+   "fieldname": "last_heartbeat",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Last Heartbeat"
+  },
+  {
+   "fieldname": "section_snapshot",
+   "fieldtype": "Section Break",
+   "label": "Cart Snapshot"
+  },
+  {
+   "description": "JSON summary of the live POS cart published by the till client. Live cart remains memory-only in the browser; this is the server copy for mobile reconnect/compare.",
+   "fieldname": "cart_snapshot",
+   "fieldtype": "Long Text",
+   "label": "Cart Snapshot"
+  },
+  {
+   "fieldname": "section_meta",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "closed_at",
+   "fieldtype": "Datetime",
+   "label": "Closed At",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "POS Mobile Session",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "report": 1,
+   "role": "POSNext Cashier",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Nexus POS Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "POSNext Mobile Scanner"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

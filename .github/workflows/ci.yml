@@ -80,6 +80,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mariadb-client
+          # ubuntu-latest is rolling onto 26.04, whose apt mariadb-client is 11.8+
+          # and requires TLS by default. The mariadb:10.6 service container has no
+          # SSL. ~/.my.cnf is also read by bench (new-site / reinstall), so a
+          # per-command --skip-ssl flag is not enough. CI-only; not production.
+          printf '[client]\nskip-ssl = true\n' > ~/.my.cnf
 
       - name: Setup
         run: |

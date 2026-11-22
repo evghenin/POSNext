@@ -94,7 +94,16 @@ jinja = {
 # Fixtures
 # --------
 fixtures = [
-	{"dt": "Role", "filters": [["role_name", "in", ["POSNext Cashier", "Nexus POS Manager"]]]},
+	{
+		"dt": "Role",
+		"filters": [
+			[
+				"role_name",
+				"in",
+				["POSNext Cashier", "Nexus POS Manager", "POSNext Mobile Scanner"],
+			]
+		],
+	},
 	{"dt": "Custom DocPerm", "filters": [["role", "in", ["POSNext Cashier", "Nexus POS Manager"]]]},
 ]
 

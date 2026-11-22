@@ -3,7 +3,18 @@
 import frappe
 
 # Import API modules to make them accessible
-from . import auth, customers, invoices, items, offers, pos_profile, promotions, shifts, utilities
+from . import (
+	auth,
+	customers,
+	invoices,
+	items,
+	mobile_scanner,
+	offers,
+	pos_profile,
+	promotions,
+	shifts,
+	utilities,
+)
 
 
 @frappe.whitelist(allow_guest=True)
