@@ -145,8 +145,155 @@ export function useScannerPairing(options = {}) {
 	}
 }
 
+export const SCANNER_POLL_MS = 1500
+
+const appliedOperationIds = new Set()
+let applyTimer = null
+let applyBusy = false
+
+export function scannerDevicesConnected(devices) {
+	return (devices || []).some((device) => device?.status === "Connected")
+}
+
+export function scannerAddLine(command) {
+	const payload =
+		command?.payload && typeof command.payload === "object"
+			? command.payload
+			: {}
+	const qty = Number(payload.qty ?? 1)
+	return {
+		operationId: command?.operation_id || "",
+		commandType: command?.command_type || "",
+		itemCode: String(payload.item_code || "").trim(),
+		qty: Number.isFinite(qty) && qty > 0 ? qty : null,
+		uom: payload.uom ? String(payload.uom) : "",
+	}
+}
+
+/**
+ * Apply polled scanner commands to the live cart, then ACK each one.
+ * `appliedIds` stops a retry of the same operation_id from adding the line twice.
+ */
+export async function applyPolledCommands({
+	commands,
+	sessionId,
+	resolveItem,
+	addItem,
+	ack,
+	appliedIds = appliedOperationIds,
+	busy = false,
+}) {
+	if (busy) return { skipped: true }
+	for (const command of commands || []) {
+		const line = scannerAddLine(command)
+		if (!line.operationId) continue
+		if (line.commandType !== "add_item" || !line.itemCode || line.qty == null) {
+			await ack(sessionId, line.operationId, "rejected", {
+				reason:
+					line.commandType !== "add_item"
+						? "unsupported_command"
+						: "invalid_add",
+			})
+			continue
+		}
+		if (appliedIds.has(line.operationId)) {
+			await ack(sessionId, line.operationId, "applied", {
+				already_applied: true,
+			})
+			continue
+		}
+		try {
+			const resolved = await resolveItem(line)
+			const item = resolved?.message || resolved
+			if (!item?.item_code) {
+				throw new Error("Item not found")
+			}
+			if (line.uom) item.uom = line.uom
+			await addItem(item, line.qty)
+			appliedIds.add(line.operationId)
+			await ack(sessionId, line.operationId, "applied", {
+				item_code: line.itemCode,
+				qty: line.qty,
+				uom: item.uom || line.uom || null,
+			})
+		} catch (error) {
+			await ack(sessionId, line.operationId, "rejected", {
+				message: error?.message || "Could not add item",
+			})
+		}
+	}
+	return { skipped: false }
+}
+
+export function startScannerApplyLoop() {
+	if (applyTimer || typeof window === "undefined") return
+	const tick = () => {
+		runScannerApplyTick().catch((error) => {
+			log.error("Scanner apply tick failed", error)
+		})
+	}
+	tick()
+	applyTimer = setInterval(tick, SCANNER_POLL_MS)
+}
+
+export function stopScannerApplyLoop() {
+	if (applyTimer) {
+		clearInterval(applyTimer)
+		applyTimer = null
+	}
+	applyBusy = false
+	appliedOperationIds.clear()
+}
+
+async function runScannerApplyTick() {
+	if (applyBusy) return
+	const sessionId = browserStorage().getItem(MOBILE_SESSION_INSTANCE_KEY)
+	if (!sessionId) return
+
+	const { usePOSShiftStore } = await import("@/stores/posShift")
+	const { usePOSCartStore } = await import("@/stores/posCart")
+	const shiftStore = usePOSShiftStore()
+	const cartStore = usePOSCartStore()
+	if (!shiftStore.hasOpenShift || cartStore.isSubmitting) return
+
+	applyBusy = true
+	try {
+		const listed = await call("pos_next.api.mobile_scanner.list_devices", {
+			session_instance_id: sessionId,
+		})
+		if (!scannerDevicesConnected(listed?.devices)) return
+
+		const polled = await call("pos_next.api.mobile_scanner.poll_commands", {
+			session_instance_id: sessionId,
+		})
+		await applyPolledCommands({
+			commands: polled?.commands || [],
+			sessionId,
+			resolveItem: (line) =>
+				call("pos_next.api.items.get_item_details", {
+					item_code: line.itemCode,
+					pos_profile: shiftStore.profileName,
+					qty: line.qty,
+					uom: line.uom || undefined,
+				}),
+			addItem: (item, qty) =>
+				cartStore.addItem(item, qty, true, shiftStore.currentProfile),
+			ack: (sid, operationId, status, result) =>
+				call("pos_next.api.mobile_scanner.ack_command", {
+					session_instance_id: sid,
+					operation_id: operationId,
+					status,
+					result,
+				}),
+		})
+	} finally {
+		applyBusy = false
+	}
+}
+
 /** Close the till session so a phone cannot pair to a finished shift. */
 export async function closeMobileScannerSession(storage = browserStorage()) {
+	stopScannerApplyLoop()
 	const sessionId = storage.getItem(MOBILE_SESSION_INSTANCE_KEY)
 	if (!sessionId) return
 	storage.removeItem(MOBILE_SESSION_INSTANCE_KEY)
